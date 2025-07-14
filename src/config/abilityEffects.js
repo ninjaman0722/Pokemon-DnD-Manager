@@ -12,6 +12,7 @@
  * @param {number} [damage] - The calculated damage, when applicable.
  */
 import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTABLE_MOVES } from './gameData';
+import { calculateStat, getStatModifier } from '../utils/api';
 // --- Helper Functions ---
 const getActiveOpponents = (self, battleState, newLog) => {
     const selfTeamId = battleState.teams.find(t => t.pokemon.some(p => p.id === self.id))?.id;

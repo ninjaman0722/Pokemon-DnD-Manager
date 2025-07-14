@@ -56,6 +56,36 @@ export const getAccuracyEvasionModifier = (stage) => {
     };
     return multipliers[stage] || 1;
 };
+export const getEffectiveAbility = (pokemon, currentBattleState) => {
+    if (!pokemon || !pokemon.ability) {
+        return null;
+    }
+
+    // Check for Neutralizing Gas on the field
+    if (currentBattleState) {
+        const gasUser = currentBattleState.teams
+            .flatMap(t => t.pokemon)
+            .find(p => p && !p.fainted && p.ability.toLowerCase() === 'neutralizing-gas');
+
+        // If gas is active and this isn't the user of the gas, suppress the ability
+        if (gasUser && gasUser.id !== pokemon.id) {
+            return null;
+        }
+    }
+
+    // Check for volatile statuses that suppress abilities
+    if (pokemon.volatileStatuses.some(s => (s.name || s) === 'Ability Suppressed')) {
+        return null;
+    }
+
+    return pokemon.ability;
+};
+
+export const getStatModifier = (stage) => {
+    if (stage >= 0) { return (2 + stage) / 2; }
+    return 2 / (2 - stage);
+};
+
 
 // Add this main calculation function to api.js
 export const calculateHitChance = (attacker, defender, move, battleState) => {
@@ -83,7 +113,7 @@ export const calculateHitChance = (attacker, defender, move, battleState) => {
     // Step 3: Item Effects
     if (attackerItem === 'wide-lens') accuracy *= 1.1;
     if (defenderItem === 'bright-powder') accuracy *= 0.9;
-    
+
     // Zoom Lens requires a speed check
     const attackerSpeed = calculateStat(attacker.stats.speed, attacker.level) * getStatModifier(attacker.stat_stages.speed);
     const defenderSpeed = calculateStat(defender.stats.speed, defender.level) * getStatModifier(defender.stat_stages.speed);
@@ -99,7 +129,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     if (BASE_FORM_MAP[pokeKey]) {
         pokeKey = BASE_FORM_MAP[pokeKey];
     }
-    
+
     let pokeData;
     if (pokemonDataCache.has(pokeKey)) {
         pokeData = pokemonDataCache.get(pokeKey);
@@ -112,7 +142,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
 
     const speciesRes = await fetch(pokeData.species.url);
     const speciesData = await speciesRes.json();
-    
+
     let defaultGender = 'Genderless';
     if (speciesData.gender_rate !== -1) {
         defaultGender = (speciesData.gender_rate === 8) ? 'Female' : 'Male';
@@ -120,7 +150,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
 
     const itemPromise = fetchItemData(heldItemName);
     const abilityPromises = pokeData.abilities.map(a => fetch(a.ability.url).then(res => res.json()));
-    
+
     const allLearnableMoveNames = [...new Set(pokeData.moves.map(m => m.move.name.replace(/-/g, ' ')))];
 
     // --- THIS IS THE CORRECTED, SAFER SORTING LOGIC ---
@@ -160,7 +190,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     const baseStats = Object.fromEntries(pokeData.stats.map(s => [s.stat.name, s.base_stat]));
     const types = pokeData.types.map(t => t.type.name);
     const newMaxHp = calculateStat(baseStats.hp, level, true);
-    
+
     const speciesName = speciesData.name;
     const speciesIdentifier = pokeData.name;
     let formLookupKey = speciesName;
@@ -172,7 +202,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
         }
     }
     const forms = officialFormsData[formLookupKey] || [];
-    
+
     return {
         id: crypto.randomUUID(),
         pokeApiId: pokeData.id,
@@ -195,7 +225,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
         moves: moves.map(m => ({ ...m, pp: m.maxPp })),
         allMoveNames: allLearnableMoveNames,
         types,
-        abilities: fullAbilities.map(a => ({...a, name: a.name.replace(/-/g, ' ')})),
+        abilities: fullAbilities.map(a => ({ ...a, name: a.name.replace(/-/g, ' ') })),
         ability: (fullAbilities.find(a => !a.is_hidden)?.name || fullAbilities[0]?.name || '').replace(/-/g, ' '),
         heldItem: heldItem,
         status: 'None',
@@ -227,7 +257,7 @@ export async function fetchMoveData(moveName) {
         const response = await fetch(`${POKEAPI_BASE_URL}move/${moveKey}/`);
         if (!response.ok) throw new Error(`Move "${moveName}" not found.`);
         const data = await response.json();
-        
+
         const englishEffectEntry = data.effect_entries.find(e => e.language.name === 'en') || { short_effect: 'No description available.' };
 
         const moveData = {
@@ -238,7 +268,7 @@ export async function fetchMoveData(moveName) {
             accuracy: data.accuracy || 100,
             pp: data.pp,
             target: data.target,
-            effect_entries: [englishEffectEntry], 
+            effect_entries: [englishEffectEntry],
             meta: data.meta,
             stat_changes: data.stat_changes,
             effects: [],

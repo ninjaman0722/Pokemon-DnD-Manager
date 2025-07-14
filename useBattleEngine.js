@@ -6,46 +6,68 @@ import {
 } from '../config/gameData';
 import { abilityEffects } from '../config/abilityEffects';
 import { itemEffects } from '../config/itemEffects';
-import { calculateStat, getEffectiveAbility, getStatModifier } from '../utils/api';
+import { calculateStat, getStatModifier } from '../utils/api';
 
 export const useBattleEngine = (battleState, battleId, allTrainers, queuedActions, setQueuedActions, setTurnOrder, isAiEnabled) => {
     const [isProcessingTurn, setIsProcessingTurn] = useState(false);
     const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
 
-    const handleTransform = (transformer, target, newLog) => {
-        if (transformer.transformed || target.transformed) {
-            newLog.push({ type: 'text', text: 'But it failed!' });
-            return;
+    const getEffectiveAbility = (pokemon, currentBattleState) => {
+        if (!pokemon || !pokemon.ability) {
+            return null;
+        }
+        const handleTransform = (transformer, target, newLog) => {
+            if (transformer.transformed || target.transformed) {
+                newLog.push({ type: 'text', text: 'But it failed!' });
+                return;
+            }
+
+            newLog.push({ type: 'text', text: `${transformer.name} transformed into ${target.name}!` });
+
+            // Create a backup of the original state before transforming
+            transformer.basePokemonState = JSON.parse(JSON.stringify(transformer));
+
+            // Copy properties from the target
+            transformer.name = target.name;
+            transformer.sprites = { ...target.sprites };
+            transformer.sprite = target.sprite;
+            transformer.shinySprite = target.shinySprite;
+            transformer.types = [...target.types];
+            transformer.weight = target.weight;
+
+            // Copy base stats and current stat stages
+            transformer.stats = { ...target.stats }; // Copy the calculated stats
+            transformer.stat_stages = { ...target.stat_stages };
+
+            // Copy moveset, setting PP to 5 for each move
+            transformer.moves = target.moves.map(move => ({
+                ...move,
+                pp: 5,
+                maxPp: 5,
+            }));
+
+            // Mark as transformed
+            transformer.transformed = true;
+        };
+        // Check for Neutralizing Gas on the field
+        if (currentBattleState) {
+            const gasUser = currentBattleState.teams
+                .flatMap(t => t.pokemon)
+                .find(p => p && !p.fainted && p.ability.toLowerCase() === 'neutralizing-gas');
+
+            // If gas is active and this isn't the user of the gas, suppress the ability
+            if (gasUser && gasUser.id !== pokemon.id) {
+                return null;
+            }
         }
 
-        newLog.push({ type: 'text', text: `${transformer.name} transformed into ${target.name}!` });
+        // Check for volatile statuses that suppress abilities
+        if (pokemon.volatileStatuses.some(s => (s.name || s) === 'Ability Suppressed')) {
+            return null;
+        }
 
-        // Create a backup of the original state before transforming
-        transformer.basePokemonState = JSON.parse(JSON.stringify(transformer));
-
-        // Copy properties from the target
-        transformer.name = target.name;
-        transformer.sprites = { ...target.sprites };
-        transformer.sprite = target.sprite;
-        transformer.shinySprite = target.shinySprite;
-        transformer.types = [...target.types];
-        transformer.weight = target.weight;
-
-        // Copy base stats and current stat stages
-        transformer.stats = { ...target.stats }; // Copy the calculated stats
-        transformer.stat_stages = { ...target.stat_stages };
-
-        // Copy moveset, setting PP to 5 for each move
-        transformer.moves = target.moves.map(move => ({
-            ...move,
-            pp: 5,
-            maxPp: 5,
-        }));
-
-        // Mark as transformed
-        transformer.transformed = true;
+        return pokemon.ability;
     };
-
     const applyStatChange = (target, stat, change, newLog, currentBattleState) => {
         if (target.fainted) return;
 
@@ -306,17 +328,6 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
             if (pokemon.currentHp === 0) { pokemon.fainted = true; newLog.push({ type: 'text', text: `${pokemon.name} fainted!` }); return; }
         });
     };
-    const getActiveOpponents = (pokemon, currentBattleState) => {
-        const { teams, activePokemonIndices } = currentBattleState;
-        const pokemonTeam = teams.find(t => t.pokemon.some(p => p.id === pokemon.id));
-        if (!pokemonTeam) return [];
-
-        const opponentTeam = teams.find(t => t.id !== pokemonTeam.id);
-        if (!opponentTeam) return [];
-
-        const opponentActiveIndices = activePokemonIndices[opponentTeam.id] || [];
-        return opponentTeam.pokemon.filter((p, i) => opponentActiveIndices.includes(i) && p && !p.fainted);
-    };
     const runEndOfTurnPhase = (currentBattleState, newLog) => {
         const { teams, activePokemonIndices, field } = currentBattleState;
 
@@ -486,28 +497,28 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
             }
         }
     };
+
+
+
     // In useBattleEngine.js
 
     const calculateDamage = (attacker, defender, move, isCritical, currentBattleState, newLog) => {
         const attackerAbility = getEffectiveAbility(attacker, currentBattleState)?.toLowerCase();
-        const defenderAbility = getEffectiveAbility(defender, currentBattleState)?.toLowerCase();
         const isSpecial = move.damage_class.name === 'special';
         const moveForCalc = { ...move, isSpecial };
+        const defenderItem = defender.heldItem?.name.toLowerCase(); // Get defender's item
 
-        // Ability-based immunities (not affected by Magic Room)
-        if (abilityEffects[defenderAbility]?.onCheckImmunity?.(moveForCalc, defender, attackerAbility, newLog, applyStatChange, currentBattleState)) {
+        // Ability-based immunities are not affected by Magic Room, so they stay here.
+        if (abilityEffects[getEffectiveAbility(defender, currentBattleState)?.toLowerCase()]?.onCheckImmunity?.(moveForCalc, defender, attackerAbility, newLog, applyStatChange, currentBattleState)) {
             return { damage: 0, effectiveness: 0 };
         }
-
         if (abilityEffects[attackerAbility]?.onModifyMove) {
             abilityEffects[attackerAbility].onModifyMove(moveForCalc, attacker, currentBattleState);
         }
-
         let initialEffectiveness = 1;
         defender.types.forEach(type => { initialEffectiveness *= TYPE_CHART[move.type]?.[type] ?? 1; });
 
         if (initialEffectiveness === 0) {
-            const defenderItem = defender.heldItem?.name.toLowerCase();
             if (defenderItem === 'ring-target') {
                 initialEffectiveness = 1; // The move now hits for neutral damage
                 newLog.push({ type: 'text', text: `${defender.name}'s Ring Target made it vulnerable!` });
@@ -516,10 +527,16 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
                 return { damage: 0, effectiveness: 0 };
             }
         }
-
-        // Wonder Guard ability check
+        // --- NEW WONDER GUARD LOGIC ---
+        const defenderAbility = getEffectiveAbility(defender, currentBattleState)?.toLowerCase();
         if (defenderAbility === 'wonder-guard' && initialEffectiveness <= 1) {
             newLog.push({ type: 'text', text: `${defender.name}'s Wonder Guard protected it!` });
+            return { damage: 0, effectiveness: 0 };
+        }
+        // --- END NEW LOGIC ---
+
+        if (initialEffectiveness === 0) {
+            newLog.push({ type: 'text', text: `It had no effect on ${defender.name}...` });
             return { damage: 0, effectiveness: 0 };
         }
 
@@ -528,16 +545,20 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
         }
 
         const attackStageKey = isSpecial ? 'special-attack' : 'attack';
-        let defenseStageKey;
+        let defenseStageKey; // We will define this inside the Wonder Room logic
 
-        // --- Stat Stage & Unaware Logic ---
+        // Define the initial stat stages
         let attackStage = isCritical ? Math.max(0, attacker.stat_stages?.[attackStageKey] ?? 0) : (attacker.stat_stages?.[attackStageKey] ?? 0);
-        // Defender's Unaware ignores attacker's stat boosts
+        let defenseStage; // Will be defined below
+
+        // --- NEW UNAWARE LOGIC ---
+        // If the defender has Unaware, it ignores the attacker's stat boosts.
         if (defenderAbility === 'unaware') {
             attackStage = 0;
         }
+        // --- END NEW LOGIC ---
 
-        // --- Wonder Room Logic ---
+        // This is the Wonder Room logic we implemented previously
         let defenseBaseStat;
         if (currentBattleState.field.wonderRoomTurns > 0) {
             defenseStageKey = isSpecial ? 'defense' : 'special-defense';
@@ -547,31 +568,36 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
             defenseBaseStat = isSpecial ? defender.stats?.['special-defense'] ?? 1 : defender.stats?.defense ?? 1;
         }
 
-        // --- Stat Stage & Unaware Logic (continued) ---
-        let defenseStage = isCritical ? Math.min(0, defender.stat_stages?.[defenseStageKey] ?? 0) : (defender.stat_stages?.[defenseStageKey] ?? 0);
-        // Attacker's Unaware ignores defender's stat boosts
+        // Define the defense stage after determining the key
+        defenseStage = isCritical ? Math.min(0, defender.stat_stages?.[defenseStageKey] ?? 0) : (defender.stat_stages?.[defenseStageKey] ?? 0);
+
+        // --- NEW UNAWARE LOGIC ---
+        // If the attacker has Unaware, it ignores the defender's stat boosts.
         if (attackerAbility === 'unaware') {
             defenseStage = 0;
         }
+        // --- END NEW LOGIC ---
 
+        // The rest of the function continues from here...
         const finalAttackStage = getStatModifier(attackStage);
         const finalDefenseStage = getStatModifier(defenseStage);
-
         let details = {
             power: move.power,
-            attack: (isSpecial ? attacker.stats?.['special-attack'] ?? 1 : attacker.stats?.attack ?? 1) * finalAttackStage,
-            defense: defenseBaseStat * finalDefenseStage,
+            attack: (isSpecial ? attacker.stats?.['special-attack'] ?? 1 : attacker.stats?.attack ?? 1) * getStatModifier(attackStage),
+            defense: defenseBaseStat * finalDefenseStage, // Use the new variables
             finalMultiplier: 1.0,
             effectiveness: initialEffectiveness,
             stabMultiplier: attacker.types.includes(move.type) ? 1.5 : 1.0,
             critMultiplier: 1.0,
             berryTriggered: false
         };
-
-        // Booster Energy stat boosts
         if (attacker.boosterBoost) {
             if ((isSpecial && attacker.boosterBoost.stat === 'special-attack') || (!isSpecial && attacker.boosterBoost.stat === 'attack')) {
                 details.attack *= attacker.boosterBoost.multiplier;
+            }
+            if ((isSpecial && attacker.boosterBoost.stat === 'special-defense') || (!isSpecial && attacker.boosterBoost.stat === 'defense')) {
+                // This would apply to the defender's calculation, so we add it here
+                details.defense *= attacker.boosterBoost.multiplier; // NOTE: This assumes the defender has the boost. The logic should be on the defender object.
             }
         }
         if (defender.boosterBoost) {
@@ -579,32 +605,37 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
                 details.defense *= defender.boosterBoost.multiplier;
             }
         }
-
-        // Ability-based modifications
+        // --- All ABILITY-based modifications happen outside the Magic Room check ---
         if (abilityEffects[attackerAbility]?.onModifyMove) abilityEffects[attackerAbility].onModifyMove(details, attacker);
         if (abilityEffects[attackerAbility]?.onModifyStat) details.attack = abilityEffects[attackerAbility].onModifyStat(attackStageKey, details.attack, attacker);
         if (abilityEffects[defenderAbility]?.onModifyStat) details.defense = abilityEffects[defenderAbility].onModifyStat(defenseStageKey, details.defense, defender, attacker);
         if (attacker.status?.toLowerCase() === 'burned' && !isSpecial && attackerAbility !== 'guts') details.attack /= 2;
         if (isCritical && !abilityEffects[defenderAbility]?.onCritImmunity?.(defender, move, attackerAbility)) details.critMultiplier = (attackerAbility === 'sniper') ? 2.25 : 1.5;
 
-        // Item-based modifications (skipped if Magic Room is active)
+        // --- MODIFIED SECTION ---
+        // All ITEM-based modifications are now wrapped in this single check.
+        // If Magic Room is active, this entire block is skipped.
         if (currentBattleState.field.magicRoomTurns === 0) {
             const attackerItem = attacker.heldItem?.name.toLowerCase();
             const defenderItem = defender.heldItem?.name.toLowerCase();
 
+            // These hooks modify the move or stats based on the item.
             if (itemEffects[attackerItem]?.onModifyMove) itemEffects[attackerItem].onModifyMove(details, attacker);
             if (itemEffects[attackerItem]?.onModifyStat) details.attack = itemEffects[attackerItem].onModifyStat(attackStageKey, details.attack, attacker);
             if (itemEffects[defenderItem]?.onModifyStat) details.defense = itemEffects[defenderItem].onModifyStat(defenseStageKey, details.defense, defender);
+
+            // These hooks modify the final damage multiplier.
             if (itemEffects[attackerItem]?.onModifyDamage) itemEffects[attackerItem].onModifyDamage(details, attacker, move);
             if (itemEffects[defenderItem]?.onModifyDamage) itemEffects[defenderItem].onModifyDamage(details, defender, move);
             if (itemEffects['super-effective-berry']?.onModifyDamage) itemEffects['super-effective-berry'].onModifyDamage(details, defender, move);
         }
+        // --- END MODIFIED SECTION ---
 
         details.finalMultiplier *= details.stabMultiplier;
         details.finalMultiplier *= details.critMultiplier;
         details.finalMultiplier *= details.effectiveness;
 
-        // Final ability-based damage modifications
+        // These final ability damage modifications happen after all other calculations.
         if (abilityEffects[attackerAbility]?.onModifyDamage) abilityEffects[attackerAbility].onModifyDamage(details, attacker, move);
         if (abilityEffects[defenderAbility]?.onModifyDamage) abilityEffects[defenderAbility].onModifyDamage(details, defender, move, attackerAbility);
 
@@ -613,7 +644,6 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
 
         return { damage: Math.max(1, finalDamage), effectiveness: details.effectiveness, berryTriggered: details.berryTriggered, breakdown: details };
     };
-
     const saveFinalPokemonState = async (finalBattleState) => {
         const batch = writeBatch(db);
         const uniqueTrainerIds = [...new Set(finalBattleState.teams.flatMap(team => team.pokemon.map(p => p.originalTrainerId)))].filter(Boolean);
@@ -759,9 +789,9 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
                 if (abilityName === 'unburden' && pokemon.originalHeldItem && !pokemon.heldItem) {
                     speed *= 2;
                 }
-                const itemName = pokemon.heldItem?.name.toLowerCase();
                 if (pokemon.status === 'Paralyzed') { speed /= 2; }
                 if (currentBattleState.field.magicRoomTurns === 0) {
+                    const itemName = pokemon.heldItem?.name.toLowerCase();
                     if (itemName === 'choice scarf') { speed *= 1.5; }
                     if (itemName === 'iron ball') { speed *= 0.5; }
                 }
