@@ -329,7 +329,7 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
         });
     };
 
-
+// this is a test comment
     const runEndOfTurnPhase = (currentBattleState, newLog) => {
         const { teams, activePokemonIndices, field } = currentBattleState;
 
