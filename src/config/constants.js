@@ -1,0 +1,5 @@
+export const FORM_CHANGE_METHOD = {
+  PERMANENT: 'PERMANENT',
+  BATTLE: 'BATTLE',
+  ITEM_HOLD: 'ITEM_HOLD',
+};
