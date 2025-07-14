@@ -328,8 +328,7 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
             if (pokemon.currentHp === 0) { pokemon.fainted = true; newLog.push({ type: 'text', text: `${pokemon.name} fainted!` }); return; }
         });
     };
-
-// this is a test comment
+    
     const runEndOfTurnPhase = (currentBattleState, newLog) => {
         const { teams, activePokemonIndices, field } = currentBattleState;
 
