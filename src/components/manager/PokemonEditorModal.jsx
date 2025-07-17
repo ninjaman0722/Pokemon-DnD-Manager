@@ -4,7 +4,17 @@ import { calculateStat, fetchItemData, fetchMoveData, getSprite } from '../../ut
 import AutocompleteInput from '../common/AutocompleteInput';
 import { NON_VOLATILE_STATUSES, VOLATILE_STATUSES, TYPE_COLORS, MOVE_CATEGORY_ICONS, POKEBALLS } from '../../config/gameData';
 
-const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWildEditor = false }) => {
+const PokemonEditorModal = ({
+    pokemon,
+    onSave,
+    onClose,
+    dispatch,
+    itemList,
+    isWildEditor = false,
+    pokemonLocation,
+    onMoveToBox,
+    onMoveToRoster
+}) => {
     const { state } = useManagerContext();
     const { customMoves } = state;
 
@@ -132,7 +142,14 @@ const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWi
     const handleShinyToggle = (e) => {
         setEditedPokemon(p => ({ ...p, isShiny: e.target.checked }));
     };
-
+    const handleMoveClick = () => {
+        if (pokemonLocation === 'ROSTER') {
+            onMoveToBox(editedPokemon);
+        } else if (pokemonLocation === 'BOX') {
+            onMoveToRoster(editedPokemon);
+        }
+        onClose(); // Close the modal after the move action
+    };
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-800 text-white rounded-lg shadow-2xl w-full max-w-4xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -263,6 +280,7 @@ const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWi
                                                 </div>
                                                 <p className="text-xs text-gray-300 mt-2">{getMoveDescription(move)}</p>
                                             </div>
+
                                         )}
                                     </div>
                                 );
@@ -271,6 +289,16 @@ const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWi
                     )}
                 </div>
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-700">
+                    <div>
+                        {!isWildEditor && (
+                            <button
+                                onClick={handleMoveClick}
+                                className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md font-semibold"
+                            >
+                                {pokemonLocation === 'ROSTER' ? 'Move to Box' : 'Move to Roster'}
+                            </button>
+                        )}
+                    </div>
                     <button onClick={onClose} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md font-semibold">Cancel</button>
                     <button onClick={handleSaveChanges} className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-md font-semibold">{isWildEditor ? 'Add to Team' : 'Save Changes'}</button>
                 </div>

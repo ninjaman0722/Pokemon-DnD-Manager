@@ -203,7 +203,26 @@ export const CRIT_CHANCE_PERCENTAGES = {
     3: '100%',
 };
 
-export const TYPE_COLORS = { normal: 'bg-gray-400 text-black', fire: 'bg-red-500', water: 'bg-blue-500', electric: 'bg-yellow-400 text-black', grass: 'bg-green-500', ice: 'bg-cyan-300 text-black', fighting: 'bg-orange-700', poison: 'bg-purple-600', ground: 'bg-yellow-600', flying: 'bg-indigo-400', psychic: 'bg-pink-500', bug: 'bg-lime-500', rock: 'bg-yellow-700', ghost: 'bg-indigo-800', dragon: 'bg-indigo-600', dark: 'bg-gray-700', steel: 'bg-gray-500', fairy: 'bg-pink-300 text-black', };
+export const TYPE_COLORS = {
+    normal: 'bg-gray-400 text-black',
+    fire: 'bg-red-500 text-white',
+    water: 'bg-blue-500 text-white',
+    electric: 'bg-yellow-400 text-black', // Was yellow-300
+    grass: 'bg-green-500 text-white',
+    ice: 'bg-cyan-400 text-black',      // Was cyan-300
+    fighting: 'bg-orange-700 text-white',
+    poison: 'bg-purple-600 text-white',
+    ground: 'bg-yellow-600 text-white',
+    flying: 'bg-sky-400 text-black',
+    psychic: 'bg-pink-500 text-white',     // Was pink-400
+    bug: 'bg-lime-500 text-black',
+    rock: 'bg-yellow-800 text-white',
+    ghost: 'bg-indigo-700 text-white',
+    dragon: 'bg-indigo-500 text-white',
+    dark: 'bg-gray-700 text-white',
+    steel: 'bg-slate-500 text-white',
+    fairy: 'bg-pink-400 text-black',      // Was pink-300
+};
 export const TYPE_CHART = { "normal": { "rock": 0.5, "steel": 0.5, "ghost": 0 }, "fire": { "fire": 0.5, "water": 0.5, "grass": 2, "ice": 2, "bug": 2, "rock": 0.5, "dragon": 0.5, "steel": 2 }, "water": { "fire": 2, "water": 0.5, "grass": 0.5, "ground": 2, "rock": 2, "dragon": 0.5 }, "electric": { "water": 2, "electric": 0.5, "grass": 0.5, "ground": 0, "flying": 2, "dragon": 0.5 }, "grass": { "fire": 0.5, "water": 2, "grass": 0.5, "poison": 0.5, "ground": 2, "flying": 0.5, "bug": 0.5, "rock": 2, "dragon": 0.5, "steel": 0.5 }, "ice": { "fire": 0.5, "water": 0.5, "grass": 2, "ice": 0.5, "ground": 2, "flying": 2, "dragon": 2, "steel": 0.5 }, "fighting": { "normal": 2, "ice": 2, "poison": 0.5, "flying": 0.5, "psychic": 0.5, "bug": 0.5, "rock": 2, "ghost": 0, "dark": 2, "steel": 2, "fairy": 0.5 }, "poison": { "grass": 2, "poison": 0.5, "ground": 0.5, "rock": 0.5, "ghost": 0.5, "steel": 0, "fairy": 2 }, "ground": { "fire": 2, "electric": 2, "grass": 0.5, "poison": 2, "flying": 0, "bug": 0.5, "rock": 2, "steel": 2 }, "flying": { "electric": 0.5, "grass": 2, "fighting": 2, "bug": 2, "rock": 0.5, "steel": 0.5 }, "psychic": { "fighting": 2, "poison": 2, "psychic": 0.5, "dark": 0, "steel": 0.5 }, "bug": { "fire": 0.5, "grass": 2, "fighting": 0.5, "poison": 0.5, "flying": 0.5, "psychic": 2, "ghost": 0.5, "dark": 2, "steel": 0.5, "fairy": 0.5 }, "rock": { "fire": 2, "ice": 2, "fighting": 0.5, "ground": 0.5, "flying": 2, "bug": 2, "steel": 0.5 }, "ghost": { "normal": 0, "psychic": 2, "ghost": 2, "dark": 0.5 }, "dragon": { "dragon": 2, "steel": 0.5, "fairy": 0 }, "dark": { "fighting": 0.5, "psychic": 2, "ghost": 2, "dark": 0.5, "fairy": 0.5 }, "steel": { "fire": 0.5, "water": 0.5, "electric": 0.5, "ice": 2, "rock": 2, "steel": 0.5, "fairy": 2 }, "fairy": { "fighting": 2, "poison": 0.5, "dragon": 2, "dark": 2, "steel": 0.5 } };
 export const SELF_DEBUFF_MOVES = new Set(['leaf-storm', 'draco-meteor', 'overheat', 'fleur-cannon', 'psycho-boost', 'superpower', 'close-combat', 'v-create', 'hammer-arm']);
 

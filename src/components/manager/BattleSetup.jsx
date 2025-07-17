@@ -169,7 +169,7 @@ const BattleSetup = ({ state, dispatch }) => {
                 players: Array.from({ length: Math.min(freshPlayerTeam.length, numTrainers) }, (_, i) => i),
                 opponent: Array.from({ length: opponentActiveCount }, (_, i) => i)
             },
-            userId: state.userId
+            ownerId: state.user?.uid
         };
 
         try {
