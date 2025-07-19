@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, addDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { db, appId } from '../../config/firebase';
 import { MAX_PARTY_SIZE } from '../../config/gameData';
 import { calculateStat, fetchPokemonData } from '../../utils/api';
@@ -7,13 +7,14 @@ import PokemonCard from './PokemonCard';
 import TeamPreviewCard from './TeamPreviewCard';
 import PokemonEditorModal from './PokemonEditorModal'; // Ensure this import is here
 import AutocompleteInput from '../common/AutocompleteInput';
+import SaveScenarioModal from './SaveScenarioModal';
 
-const BattleSetup = ({ state, dispatch }) => {
+const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
     // I've left this line as is, since combinedPokemonList is what you're providing from state.
     const { trainers = [], combinedPokemonList = [], itemList = [], customPokemon = [], customMoves = [] } = state;
     const [battleType, setBattleType] = useState('TRAINER');
     const [numTrainers, setNumTrainers] = useState(1);
-    const [pokemonPerTrainer, setPokemonPerTrainer] = useState(1);
+    const [pokemonPerTrainer, setPokemonPerTrainer] = useState(6);
     const [battleLevel, setBattleLevel] = useState(50);
     const [playerTrainerIds, setPlayerTrainerIds] = useState([]);
     const [playerTeam, setPlayerTeam] = useState([]);
@@ -23,19 +24,76 @@ const BattleSetup = ({ state, dispatch }) => {
     const [editingPokemon, setEditingPokemon] = useState(null);
     const [editingWildPokemon, setEditingWildPokemon] = useState(null);
     const [generatedBattle, setGeneratedBattle] = useState(null);
+    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
     const partyMembers = trainers.filter(t => t.category === 'partyMembers');
     const opponents = trainers.filter(t => t.category !== 'partyMembers');
     const selectedPlayerTrainers = trainers.filter(t => playerTrainerIds.includes(t.id));
     const opponentTrainer = trainers.find(t => t.id === opponentTrainerId);
 
+    useEffect(() => {
+        // If there's an initial scenario passed in, populate the state
+        if (initialScenario) {
+            setBattleLevel(initialScenario.level);
+            setPlayerTrainerIds(initialScenario.teams.player.trainerIds);
+            setPlayerTeam(initialScenario.teams.player.pokemon);
+            setOpponentTrainerId(initialScenario.teams.opponent.trainerId);
+            setOpponentTeam(initialScenario.teams.opponent.pokemon);
 
+            // IMPORTANT: Clear the scenario data in the parent so it doesn't load again
+            onLoadComplete(); 
+        }
+    }, [initialScenario, onLoadComplete]);
+    
     useEffect(() => {
         if (battleType === 'BOSS') { setNumTrainers(6); setPokemonPerTrainer(1); }
         setOpponentTeam([]); setOpponentTrainerId('');
     }, [battleType]);
 
     useEffect(() => { setPlayerTeam([]); setPlayerTrainerIds([]); }, [numTrainers, pokemonPerTrainer]);
+
+    const handleSaveScenario = async (scenarioName) => {
+        dispatch({ type: 'SET_LOADING', payload: 'Saving scenario...' });
+
+        // This logic is similar to startBattle, ensuring Pokémon are reset
+        const resetPokemon = (p) => ({ ...p, currentHp: p.maxHp, fainted: false });
+        const freshPlayerTeam = playerTeam.map(resetPokemon);
+        let freshOpponentTeam = opponentTeam.map(resetPokemon);
+
+        if (battleType === 'BOSS' && opponentTrainer.finalPokemon) {
+            const freshFinalPokemon = resetPokemon(scalePokemonToLevel(opponentTrainer.finalPokemon, battleLevel));
+            freshOpponentTeam = [...freshOpponentTeam, freshFinalPokemon];
+        }
+
+        // The structure of the scenario object we designed
+        const scenarioObject = {
+            name: scenarioName,
+            createdAt: serverTimestamp(),
+            level: battleLevel,
+            fieldState: { weather: 'none', terrain: 'none', hazards: { playerSide: {}, opponentSide: {} } },
+            teams: {
+                player: {
+                    trainerIds: playerTrainerIds,
+                    pokemon: freshPlayerTeam
+                },
+                opponent: {
+                    trainerId: opponentTrainerId || null,
+                    pokemon: freshOpponentTeam
+                }
+            }
+        };
+
+        try {
+            // Save the new document to the 'scenarios' subcollection of the current campaign
+            const scenariosCollectionRef = collection(db, 'campaigns', state.selectedCampaignId, 'scenarios');
+            await addDoc(scenariosCollectionRef, scenarioObject);
+            // Optionally dispatch a success message here
+        } catch (e) {
+            dispatch({ type: 'SET_ERROR', payload: `Failed to save scenario: ${e.message}` });
+        } finally {
+            dispatch({ type: 'SET_LOADING', payload: null });
+        }
+    };
 
     const scalePokemonToLevel = (pokemon, level) => {
         if (!pokemon || !pokemon.baseStats) return null;
@@ -149,12 +207,12 @@ const BattleSetup = ({ state, dispatch }) => {
                 players: false,
                 opponent: false
             },
-            log: [{type: 'text', text: `A battle is starting!`}],
+            log: [{ type: 'text', text: `A battle is starting!` }],
             turn: 1,
             phase: 'ACTION_SELECTION',
             gameOver: false,
-            field: { 
-                weather: 'none', 
+            field: {
+                weather: 'none',
                 weatherTurns: 0,
                 terrain: 'none',
                 terrainTurns: 0,
@@ -221,6 +279,12 @@ const BattleSetup = ({ state, dispatch }) => {
 
     return (
         <div className="p-4 md:p-8">
+            {isSaveModalOpen && (
+                <SaveScenarioModal
+                    onSave={handleSaveScenario}
+                    onClose={() => setIsSaveModalOpen(false)}
+                />
+            )}
             {editingPokemon && <PokemonEditorModal pokemon={editingPokemon} onSave={handleSavePokemonEdit} onClose={() => setEditingPokemon(null)} dispatch={dispatch} itemList={itemList} />}
             {editingWildPokemon && <PokemonEditorModal pokemon={editingWildPokemon} onSave={handleAddBulkWildPokemon} onClose={() => setEditingWildPokemon(null)} dispatch={dispatch} itemList={itemList} isWildEditor={true} />}
             <h1 className="text-4xl font-bold text-indigo-400 mb-6">Battle Setup</h1>
@@ -261,6 +325,9 @@ const BattleSetup = ({ state, dispatch }) => {
                 </div>
             </div>
             <div className="text-center mt-8 flex justify-center gap-4">
+                <button onClick={() => setIsSaveModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed" disabled={playerTeam.length === 0 || opponentTeam.length === 0}>
+                    Save Scenario
+                </button>
                 <button onClick={() => dispatch({ type: 'SET_VIEW', payload: 'TRAINER_MANAGER' })} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-md transition">Back to Manager</button>
                 <button onClick={startBattle} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed" disabled={playerTeam.length === 0 || opponentTeam.length === 0}>Start Battle</button>
             </div>

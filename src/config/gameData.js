@@ -202,7 +202,57 @@ export const CRIT_CHANCE_PERCENTAGES = {
     2: '50%',   // 1/2
     3: '100%',
 };
+export const POCKETS = [
+    'Medicine',
+    'Poké Balls',
+    'TMs',
+    'Berries',
+    'Battle Items',
+    'Evolution',
+    'Key Items',
+    'Other'
+];
 
+// 2. REPLACE your old mapping object with this more detailed one.
+export const CATEGORY_TO_POCKET_MAPPING = {
+    // Medicine Pocket
+    'healing': 'Medicine',
+    'status cures': 'Medicine',
+    'revival': 'Medicine',
+    'pp recovery': 'Medicine',
+    'vitamins': 'Medicine',
+    'effort training': 'Medicine',
+    
+    // Poké Balls Pocket
+    'standard balls': 'Poké Balls',
+    'special balls': 'Poké Balls',
+    'apricorn balls': 'Poké Balls',
+
+    // TMs Pocket
+    'all machines': 'TMs',
+
+    // Berries Pocket
+    'all berries': 'Berries',
+
+    // Battle Items Pocket
+    'in a pinch': 'Battle Items',
+    'picky healing': 'Battle Items',
+    'type enhancement': 'Battle Items',
+    'choice': 'Battle Items',
+    'miracle shooter': 'Battle Items',
+    'stat boosts': 'Battle Items',
+    'flutes': 'Battle Items',
+    'held items': 'Battle Items',
+
+    // Evolution Pocket
+    'evolution': 'Evolution',
+
+    // Key Items Pocket
+    'key items': 'Key Items',
+    'plot advancement': 'Key Items',
+    'apricorn box': 'Key Items',
+    'data cards': 'Key Items',
+};
 export const TYPE_COLORS = {
     normal: 'bg-gray-400 text-black',
     fire: 'bg-red-500 text-white',

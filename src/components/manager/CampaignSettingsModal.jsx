@@ -50,33 +50,45 @@ const CampaignSettingsModal = ({ campaign, onSave, onClose, dispatch }) => {
                     <h2 className="text-2xl font-bold text-indigo-400">Campaign Settings: {campaign.name}</h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-white font-bold text-2xl">×</button>
                 </div>
-                
+
                 <p className="text-sm text-gray-300 mb-4">These are the default permissions for all trainers who join this campaign.</p>
 
                 <div className="space-y-3 overflow-y-auto pr-2 flex-grow">
-                    <PermissionToggle 
+                    <PermissionToggle
                         label="View Pokémon Box"
                         description="Allow trainers to see Pokémon stored in their box."
                         isChecked={permissions.canViewBox}
                         onChange={() => handlePermissionChange('canViewBox')}
                     />
-                    <PermissionToggle 
+                    <PermissionToggle
                         label="View Bag"
                         description="Allow trainers to see the items in their bag."
                         isChecked={permissions.canViewBag}
                         onChange={() => handlePermissionChange('canViewBag')}
                     />
-                     <PermissionToggle 
+                    <PermissionToggle
                         label="Edit Nicknames"
                         description="Allow trainers to give their Pokémon nicknames."
                         isChecked={permissions.canEditNicknames}
                         onChange={() => handlePermissionChange('canEditNicknames')}
                     />
-                    <PermissionToggle 
+                    <PermissionToggle
                         label="Use Items"
                         description="Allow trainers to use healing items on their Pokémon outside of battle."
                         isChecked={permissions.canUseItems}
                         onChange={() => handlePermissionChange('canUseItems')}
+                    />
+                    <PermissionToggle
+                        label="Organize Box"
+                        description="Allow trainers to move Pokémon between their party and their boxes."
+                        isChecked={permissions.canOrganizeBox}
+                        onChange={() => handlePermissionChange('canOrganizeBox')}
+                    />
+                    <PermissionToggle
+                        label="Rename Boxes"
+                        description="Allow trainers to rename their own Pokémon boxes."
+                        isChecked={permissions.canRenameBoxes}
+                        onChange={() => handlePermissionChange('canRenameBoxes')}
                     />
                     {/* Add more toggles here as you expand the system */}
                 </div>

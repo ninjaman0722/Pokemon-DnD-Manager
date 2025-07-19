@@ -10,7 +10,7 @@ import { TYPE_COLORS } from '../../config/gameData';
 
 const CustomMoveCreator = () => {
     const { state, dispatch } = useManagerContext();
-    const { customMoves, moveList } = state; 
+    const { customMoves, moveList } = state;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingMove, setEditingMove] = useState(null);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -37,22 +37,20 @@ const CustomMoveCreator = () => {
         }
     };
 
-    // --- UPDATED SAVE FUNCTION ---
     const handleSaveCustomMove = async (moveData) => {
         dispatch({ type: 'SET_LOADING', payload: 'Saving Custom Move...' });
         try {
-            // If it's an override of an official move, use its name as the document ID
+            const collectionPath = `campaigns/${state.selectedCampaignId}/custom-moves`;
+
             if (moveData.isOverride) {
                 const docId = moveData.name.toLowerCase().replace(/\s/g, '-');
-                const docRef = doc(db, `artifacts/${appId}/public/data/custom-moves`, docId);
-                await setDoc(docRef, moveData); // Use setDoc to create or overwrite
+                const docRef = doc(db, collectionPath, docId);
+                await setDoc(docRef, moveData);
             } else if (moveData.id) {
-                // Editing an existing purely custom move
-                const docRef = doc(db, `artifacts/${appId}/public/data/custom-moves`, moveData.id);
+                const docRef = doc(db, collectionPath, moveData.id);
                 await updateDoc(docRef, moveData);
             } else {
-                // Creating a brand new purely custom move
-                await addDoc(collection(db, `artifacts/${appId}/public/data/custom-moves`), moveData);
+                await addDoc(collection(db, collectionPath), moveData);
             }
         } catch (error) {
             dispatch({ type: 'SET_ERROR', payload: `Failed to save custom move: ${error.message}` });
@@ -68,7 +66,7 @@ const CustomMoveCreator = () => {
         }
         dispatch({ type: 'SET_LOADING', payload: 'Deleting...' });
         try {
-            const docRef = doc(db, `artifacts/${appId}/public/data/custom-moves`, moveId);
+            const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-moves`, moveId);
             await deleteDoc(docRef);
         } catch (error) {
             dispatch({ type: 'SET_ERROR', payload: `Failed to delete custom move: ${error.message}` });
@@ -100,7 +98,7 @@ const CustomMoveCreator = () => {
                     </button>
                 </div>
             </div>
-            
+
             <div className="bg-gray-900/50 p-4 rounded-lg min-h-[200px]">
                 {customMoves.length > 0 ? (
                     <ul className="space-y-2">

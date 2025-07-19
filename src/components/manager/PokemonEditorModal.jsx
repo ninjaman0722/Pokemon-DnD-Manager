@@ -3,18 +3,9 @@ import { useManagerContext } from '../../context/ManagerContext';
 import { calculateStat, fetchItemData, fetchMoveData, getSprite } from '../../utils/api';
 import AutocompleteInput from '../common/AutocompleteInput';
 import { NON_VOLATILE_STATUSES, VOLATILE_STATUSES, TYPE_COLORS, MOVE_CATEGORY_ICONS, POKEBALLS } from '../../config/gameData';
+import { useDynamicStats } from '../../hooks/useDynamicStats';
 
-const PokemonEditorModal = ({
-    pokemon,
-    onSave,
-    onClose,
-    dispatch,
-    itemList,
-    isWildEditor = false,
-    pokemonLocation,
-    onMoveToBox,
-    onMoveToRoster
-}) => {
+const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWildEditor = false, trainerCategory, partyLevel }) => {
     const { state } = useManagerContext();
     const { customMoves } = state;
 
@@ -27,6 +18,7 @@ const PokemonEditorModal = ({
     const [moveSearch, setMoveSearch] = useState(['', '', '', '']);
     const [itemSearch, setItemSearch] = useState(pokemon.heldItem?.name || '');
     const [quantity, setQuantity] = useState(1);
+    const calculatedStats = useDynamicStats(editedPokemon, trainerCategory);
 
     // On initial mount, save the pokemon's base state before any form changes are applied.
     useEffect(() => {
@@ -129,10 +121,6 @@ const PokemonEditorModal = ({
         onClose();
     };
 
-
-
-    const calculatedStats = Object.fromEntries(Object.entries(editedPokemon.baseStats || {}).map(([key, value]) => [key, calculateStat(value, editedPokemon.level, key === 'hp')]));
-
     const getMoveDescription = (move) => {
         if (!move || !move.effect_entries || move.effect_entries.length === 0) return "No description available.";
         const entry = move.effect_entries.find(e => e.language?.name === 'en') || move.effect_entries[0];
@@ -141,14 +129,6 @@ const PokemonEditorModal = ({
     };
     const handleShinyToggle = (e) => {
         setEditedPokemon(p => ({ ...p, isShiny: e.target.checked }));
-    };
-    const handleMoveClick = () => {
-        if (pokemonLocation === 'ROSTER') {
-            onMoveToBox(editedPokemon);
-        } else if (pokemonLocation === 'BOX') {
-            onMoveToRoster(editedPokemon);
-        }
-        onClose(); // Close the modal after the move action
     };
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50 p-4">
@@ -162,7 +142,18 @@ const PokemonEditorModal = ({
                     />
                     <div className="grid grid-cols-2 gap-4 flex-grow">
                         {isWildEditor && (<div><label className="block text-sm font-medium text-gray-400">Quantity</label><input type="number" value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600" min="1" max="50" /></div>)}
-                        <div><label className="block text-sm font-medium text-gray-400">Level</label><input type="number" value={editedPokemon.level} onChange={handleLevelChange} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600" min="1" max="100" /></div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-400">Level</label>
+                            {trainerCategory === 'partyMembers' && !isWildEditor ? (
+                                // If it's a Party Member, show the static Party Level
+                                <div className="w-full bg-gray-900 p-2 rounded-md border border-gray-600 text-gray-300">
+                                    {partyLevel} (Party Level)
+                                </div>
+                            ) : (
+                                // Otherwise, show the editable input
+                                <input type="number" value={editedPokemon.level} onChange={handleLevelChange} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600" min="1" max="100" />
+                            )}
+                        </div>
 
                         {/* --- NEW GENDER SELECTOR --- */}
                         <div>
@@ -289,16 +280,6 @@ const PokemonEditorModal = ({
                     )}
                 </div>
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-700">
-                    <div>
-                        {!isWildEditor && (
-                            <button
-                                onClick={handleMoveClick}
-                                className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md font-semibold"
-                            >
-                                {pokemonLocation === 'ROSTER' ? 'Move to Box' : 'Move to Roster'}
-                            </button>
-                        )}
-                    </div>
                     <button onClick={onClose} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md font-semibold">Cancel</button>
                     <button onClick={handleSaveChanges} className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-md font-semibold">{isWildEditor ? 'Add to Team' : 'Save Changes'}</button>
                 </div>

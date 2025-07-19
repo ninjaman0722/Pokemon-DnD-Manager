@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useManagerContext } from '../../context/ManagerContext';
 import { doc, addDoc, setDoc, updateDoc, deleteDoc, collection } from 'firebase/firestore';
-import { db, appId } from '../../config/firebase';
+import { db } from '../../config/firebase';
 import { fetchPokemonData } from '../../utils/api';
 import CustomPokemonModal from './CustomPokemonModal';
 import OfficialSearchModal from './OfficialSearchModal';
@@ -47,34 +47,36 @@ const CustomPokemonCreator = () => {
         }
     };
 
-    const handleSaveCustomPokemon = async (pokemonData) => {
-        dispatch({ type: 'SET_LOADING', payload: 'Saving Custom Pokémon...' });
-        try {
-            const docId = pokemonData.id || pokemonData.name.toLowerCase().replace(/\s/g, '-');
-            const docRef = doc(db, `artifacts/${appId}/public/data/custom-pokemon`, docId);
-            await setDoc(docRef, { ...pokemonData, id: docId });
-        } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Failed to save custom Pokémon: ${error.message}` });
-        } finally {
-            dispatch({ type: 'SET_LOADING', payload: null });
-            setIsModalOpen(false);
-        }
-    };
+const handleSaveCustomPokemon = async (pokemonData) => {
+    dispatch({ type: 'SET_LOADING', payload: 'Saving Custom Pokémon...' });
+    try {
+        const docId = pokemonData.id || pokemonData.name.toLowerCase().replace(/\s/g, '-');
+        // This now points to the campaign-specific subcollection
+        const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-pokemon`, docId);
+        await setDoc(docRef, { ...pokemonData, id: docId });
+    } catch (error) {
+        dispatch({ type: 'SET_ERROR', payload: `Failed to save custom Pokémon: ${error.message}` });
+    } finally {
+        dispatch({ type: 'SET_LOADING', payload: null });
+        setIsModalOpen(false);
+    }
+};
 
-    const handleDeleteCustomPokemon = async (pokemonId) => {
-        if (!window.confirm("Are you sure you want to permanently delete this custom Pokémon?")) {
-            return;
-        }
-        dispatch({ type: 'SET_LOADING', payload: 'Deleting...' });
-        try {
-            const docRef = doc(db, `artifacts/${appId}/public/data/custom-pokemon`, pokemonId);
-            await deleteDoc(docRef);
-        } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Failed to delete custom Pokémon: ${error.message}` });
-        } finally {
-            dispatch({ type: 'SET_LOADING', payload: null });
-        }
-    };
+const handleDeleteCustomPokemon = async (pokemonId) => {
+    if (!window.confirm("Are you sure you want to permanently delete this custom Pokémon?")) {
+        return;
+    }
+    dispatch({ type: 'SET_LOADING', payload: 'Deleting...' });
+    try {
+        // This now points to the campaign-specific subcollection
+        const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-pokemon`, pokemonId);
+        await deleteDoc(docRef);
+    } catch (error) {
+        dispatch({ type: 'SET_ERROR', payload: `Failed to delete custom Pokémon: ${error.message}` });
+    } finally {
+        dispatch({ type: 'SET_LOADING', payload: null });
+    }
+};
 
     return (
         <div>

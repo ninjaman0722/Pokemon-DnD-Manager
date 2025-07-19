@@ -32,18 +32,18 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const [playerTeam, opponentTeam] = teams;
     const getActivePokemon = (team, indices) => indices.map(i => team.pokemon[i]).filter(p => p && !p.fainted);
 
-    const playerActivePokemon = React.useMemo(() => 
-        getActivePokemon(playerTeam, activePokemonIndices.players), 
+    const playerActivePokemon = React.useMemo(() =>
+        getActivePokemon(playerTeam, activePokemonIndices.players),
         [playerTeam, activePokemonIndices.players]
     );
 
-    const opponentActivePokemon = React.useMemo(() => 
-        getActivePokemon(opponentTeam, activePokemonIndices.opponent), 
+    const opponentActivePokemon = React.useMemo(() =>
+        getActivePokemon(opponentTeam, activePokemonIndices.opponent),
         [opponentTeam, activePokemonIndices.opponent]
     );
-    
-    const allActivePokemon = React.useMemo(() => 
-        [...playerActivePokemon, ...opponentActivePokemon], 
+
+    const allActivePokemon = React.useMemo(() =>
+        [...playerActivePokemon, ...opponentActivePokemon],
         [playerActivePokemon, opponentActivePokemon]
     );
     useEffect(() => {
@@ -54,13 +54,13 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     }, [allActivePokemon, targetingInfo.isActive, activePanelPokemonId, playerActivePokemon]);
 
     const selectedPokemonForPanel = allActivePokemon.find(p => p.id === activePanelPokemonId);
-    
+
     const handleTurnChange = async (newTurn) => {
         if (newTurn > 0) {
             await updateDoc(battleDocRef, { turn: newTurn });
         }
     };
-    
+
     const handleFieldChange = async (newField) => {
         await updateDoc(battleDocRef, { field: newField });
     };
@@ -127,7 +127,13 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
 
     const handleConfirmTargets = () => {
         if (targetingInfo.selected.length === 0) return;
-        updateQueuedAction({ ...targetingInfo.baseAction, targetIds: targetingInfo.selected });
+        updateQueuedAction({
+            ...targetingInfo.baseAction,
+            targetIds: targetingInfo.selected,
+            hits: targetingInfo.baseAction.hits?.map((_, i) => ({
+                targetId: targetingInfo.selected[i % targetingInfo.selected.length] // loop if more hits than targets
+            })) || targetingInfo.selected.map(id => ({ targetId: id }))
+        });
         setTargetingInfo({ isActive: false, potential: [], selected: [], baseAction: null });
     };
 

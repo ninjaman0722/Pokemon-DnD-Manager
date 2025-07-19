@@ -1,20 +1,22 @@
+// src/components/manager/InventoryView.jsx
 import React, { useState } from 'react';
 import { fetchItemData } from '../../utils/api';
 import AutocompleteInput from '../common/AutocompleteInput';
+import { POCKETS, CATEGORY_TO_POCKET_MAPPING } from '../../config/gameData'; // <-- Import new constants
 
 const InventoryView = ({ trainer, itemList, onBagUpdate, dispatch }) => {
-    const [activeCategory, setActiveCategory] = useState('all');
+    // Default to the first pocket instead of 'all'
+    const [activePocket, setActivePocket] = useState(POCKETS[0]);
     const [itemSearch, setItemSearch] = useState('');
     const [quantityToAdd, setQuantityToAdd] = useState(1);
 
     const bag = trainer.bag || {};
 
-    const categories = ['all', ...new Set(Object.values(bag).map(item => item.category?.replace(/-/g, ' ') || 'other'))].sort();
-
     const handleAddItem = async (name, quantity = 1) => {
         if (!name) return;
         const itemKey = name.replace(/\s/g, '-').toLowerCase();
         const itemData = await fetchItemData(itemKey);
+        console.log('DEBUGGING ITEM DATA:', itemData);
         if (!itemData) {
             dispatch({ type: 'SET_ERROR', payload: `Could not find item: ${name}` });
             return;
@@ -35,32 +37,38 @@ const InventoryView = ({ trainer, itemList, onBagUpdate, dispatch }) => {
         }
     };
 
+    // Updated filtering logic to use the POCKET mapping
     const filteredItems = Object.values(bag)
-        .filter(item => activeCategory === 'all' || (item.category?.replace(/-/g, ' ') || 'other') === activeCategory)
+        .filter(item => {
+            const itemPocket = CATEGORY_TO_POCKET_MAPPING[item.category] || 'Other';
+            return itemPocket === activePocket;
+        })
         .sort((a, b) => a.name.localeCompare(b.name));
 
     return (
         <div>
+            {/* Updated tabs to use the static POCKETS array */}
             <div className="flex space-x-1 rounded-lg bg-gray-900 p-1 mb-4">
-                {categories.map(cat => (
+                {POCKETS.map(pocket => (
                     <button
-                        key={cat}
-                        onClick={() => setActiveCategory(cat)}
-                        className={`w-full rounded-lg py-2 text-sm font-medium leading-5 transition-all duration-200 ease-in-out capitalize ${activeCategory === cat ? 'bg-indigo-600 text-white shadow' : 'text-gray-300 hover:bg-gray-700/50'}`}
+                        key={pocket}
+                        onClick={() => setActivePocket(pocket)}
+                        className={`w-full rounded-lg py-2 text-sm font-medium leading-5 transition-all duration-200 ease-in-out capitalize ${activePocket === pocket ? 'bg-indigo-600 text-white shadow' : 'text-gray-300 hover:bg-gray-700/50'}`}
                     >
-                        {cat}
+                        {pocket.replace(/-/g, ' ')}
                     </button>
                 ))}
             </div>
 
+            {/* The rest of the component remains largely the same */}
             <ul className="space-y-1 max-h-72 overflow-y-auto pr-2">
                 {filteredItems.length === 0 ? (
-                    <p className="text-gray-400 italic text-center py-4">This category is empty.</p>
+                    <p className="text-gray-400 italic text-center py-4">This pocket is empty.</p>
                 ) : filteredItems.map(item => (
                     <li key={item.name} className="p-2 rounded-md flex items-center justify-between hover:bg-gray-700/50">
                         <div className="flex items-center gap-3 overflow-hidden">
                             <img src={item.sprite || 'https://placehold.co/32x32/4a5568/e2e8f0?text=?'} alt={item.name} className="w-8 h-8" />
-                            <span className="capitalize truncate font-medium" title={item.name}>{item.name}</span>
+                            <span className="capitalize truncate font-medium" title={item.name}>{item.name.replace(/-/g, ' ')}</span>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                             <input type="number" value={item.quantity} onChange={e => handleQuantityChange(item.name.replace(/\s/g, '-'), parseInt(e.target.value, 10) || 0)} className="w-16 bg-gray-900 p-1 rounded-md border border-gray-600 text-center" />

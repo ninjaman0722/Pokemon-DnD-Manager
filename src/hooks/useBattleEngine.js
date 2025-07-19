@@ -1092,8 +1092,16 @@ export const useBattleEngine = (battleState, battleId, allTrainers, queuedAction
 
                     const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === currentTargetId);
                     if (!target || target.fainted) {
+                        console.warn(`Missing or fainted target:`, {
+                            hitIndex: i,
+                            targetId,
+                            hits: action.hits,
+                            targetIds: action.targetIds,
+                            actor: actor.name,
+                            move: move.name
+                        });
                         newLog.push({ type: 'text', text: 'But there was no target!' });
-                        continue; // Skip this hit if the target is gone
+                        continue;
                     }
 
                     // Create a fresh attack log entry for each hit

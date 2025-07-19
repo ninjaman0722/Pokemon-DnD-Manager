@@ -1,8 +1,8 @@
 // src/ManagerApp.jsx
 
-import React, { useState, useEffect, useReducer, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useReducer, useRef } from 'react';
 import { ManagerContext } from './context/ManagerContext';
-import { onSnapshot, collection, addDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
+import { onSnapshot, collection, addDoc, serverTimestamp, query, where, getDoc, doc } from 'firebase/firestore';
 import { auth, db } from './config/firebase';
 import TrainerManager from './components/manager/TrainerManager';
 import BattleSetup from './components/manager/BattleSetup';
@@ -87,14 +87,15 @@ function ManagerApp({ user }) {
         if (!state.user?.uid) return;
         dispatch({ type: 'SET_LOADING', payload: 'Syncing Campaigns...' });
 
-        // These will hold the results from our two separate listeners
         let ownedCampaigns = [];
         let joinedCampaigns = [];
 
-        // This function combines the results from both listeners and updates the state
+        // --- NEW: Flags to track when initial data has been loaded ---
+        let initialOwnedLoadComplete = false;
+        let initialJoinedLoadComplete = false;
+
         const updateCombinedState = () => {
             const allCampaigns = [...ownedCampaigns];
-            // Add joined campaigns, ensuring no duplicates
             joinedCampaigns.forEach(j => {
                 if (!allCampaigns.some(o => o.id === j.id)) {
                     allCampaigns.push(j);
@@ -103,32 +104,41 @@ function ManagerApp({ user }) {
 
             dispatch({ type: 'SET_CAMPAIGNS', payload: allCampaigns });
 
-            // Auto-select the first campaign if none is selected
-            if (!state.selectedCampaignId && allCampaigns.length > 0) {
-                dispatch({ type: 'SELECT_CAMPAIGN', payload: allCampaigns[0].id });
+            // --- NEW: Only hide the loading screen after BOTH listeners have run at least once ---
+            if (initialOwnedLoadComplete && initialJoinedLoadComplete) {
+                dispatch({ type: 'SET_LOADING', payload: null });
             }
-            dispatch({ type: 'SET_LOADING', payload: null });
         };
 
-        // --- Listener 1: For campaigns the user OWNS ---
         const ownedQuery = query(collection(db, 'campaigns'), where('ownerId', '==', state.user.uid));
         const unsubOwned = onSnapshot(ownedQuery, (snapshot) => {
             ownedCampaigns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), role: 'DM' }));
-            updateCombinedState(); // Update the main list
+            initialOwnedLoadComplete = true; // Mark this listener as having loaded
+            updateCombinedState();
         }, (error) => {
             dispatch({ type: 'SET_ERROR', payload: `Failed to fetch owned campaigns: ${error.message}` });
         });
 
-        // --- Listener 2: For campaigns the user has JOINED ---
         const joinedQuery = query(collection(db, 'campaigns'), where('members', 'array-contains', state.user.uid));
-        const unsubJoined = onSnapshot(joinedQuery, (snapshot) => {
-            joinedCampaigns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), role: 'TRAINER' }));
-            updateCombinedState(); // Update the main list
+        const unsubJoined = onSnapshot(joinedQuery, async (snapshot) => {
+            const joinedCampaignsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), role: 'TRAINER' }));
+            const dmProfilePromises = joinedCampaignsData.map(c => getDoc(doc(db, "users", c.ownerId)));
+            const dmProfileSnapshots = await Promise.all(dmProfilePromises);
+            const dmProfiles = dmProfileSnapshots.reduce((acc, snap) => {
+                acc[snap.id] = snap.data();
+                return acc;
+            }, {});
+
+            joinedCampaigns = joinedCampaignsData.map(c => ({
+                ...c,
+                dmName: dmProfiles[c.ownerId]?.displayName || 'Unknown DM'
+            }));
+            initialJoinedLoadComplete = true; // Mark this listener as having loaded
+            updateCombinedState();
         }, (error) => {
             dispatch({ type: 'SET_ERROR', payload: `Failed to fetch joined campaigns: ${error.message}` });
         });
 
-        // Return a cleanup function that unsubscribes from both listeners
         return () => {
             unsubOwned();
             unsubJoined();
@@ -262,10 +272,13 @@ function ManagerApp({ user }) {
                     canViewRoster: true,
                     canViewBox: true,
                     canViewBag: true,
-                    canEditNicknames: false,
+                    canEditNicknames: true,
                     canLevelUp: false,
                     canChangeMovesets: false,
-                    canUseItems: true
+                    canUseItems: true,
+                    canOrganizeBox: true,
+                    canRenameBoxes: true,
+                    partyLevel: 5,
                 }
             };
             const docRef = await addDoc(campaignsRef, newCampaign);

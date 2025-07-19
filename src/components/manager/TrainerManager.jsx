@@ -3,14 +3,15 @@ import { useManagerContext } from '../../context/ManagerContext';
 import { doc, addDoc, updateDoc, deleteDoc, collection, getDoc } from 'firebase/firestore';
 import { db, appId } from '../../config/firebase';
 import { fetchPokemonData, fetchMoveData, calculateStat, getSprite } from '../../utils/api';
-import { MAX_PARTY_SIZE, ALL_STATUS_CONDITIONS, TYPE_COLORS, POKEBALLS, FUSION_RECIPES, KEY_ITEM_RECIPES } from '../../config/gameData';
+import { MAX_PARTY_SIZE, ALL_STATUS_CONDITIONS, TYPE_COLORS, POKEBALLS } from '../../config/gameData';
 import AutocompleteInput from '../common/AutocompleteInput';
 import PokemonEditorModal from './PokemonEditorModal'; // Ensure this import is here
 import InventoryView from './InventoryView';
 import CustomContentManager from '../custom-content/CustomContentManager';
+import ScenarioManager from './ScenarioManager';
 import { officialFormsData } from '../../config/officialFormsData';
-import FusionModal from './FusionModal';
-import KeyItemTransformModal from './KeyItemTransformModal';
+import AddPokemonModal from './AddPokemonModal'; // Correct
+import BattleSetup from './BattleSetup';
 
 const TrainerManager = () => {
     const { state, dispatch, selectedCampaign } = useManagerContext();
@@ -23,12 +24,14 @@ const TrainerManager = () => {
     const [finalPokemonToAdd, setFinalPokemonToAdd] = useState('');
     const [editingPokemon, setEditingPokemon] = useState(null);
     const [ppRestoreState, setPpRestoreState] = useState(null);
-    const [isFusionModalOpen, setIsFusionModalOpen] = useState(false);
-    const [isTransformModalOpen, setIsTransformModalOpen] = useState(false);
     const [memberProfiles, setMemberProfiles] = useState([]);
-
+    const [currentBoxIndex, setCurrentBoxIndex] = useState(0);
+    const [isAddPokemonModalOpen, setIsAddPokemonModalOpen] = useState(false);
     const selectedTrainer = trainers.find(t => t.id === selectedTrainerId);
     const trainersCollectionPath = `campaigns/${selectedCampaignId}/trainers`;
+    const [heldPokemon, setHeldPokemon] = useState(null);
+    const [isOrganizeMode, setIsOrganizeMode] = useState(false);
+    const [scenarioToEdit, setScenarioToEdit] = useState(null);
 
     useEffect(() => { setRosterView('ROSTER'); }, [selectedTrainerId]);
     useEffect(() => {
@@ -48,6 +51,41 @@ const TrainerManager = () => {
 
         fetchMemberProfiles();
     }, [selectedCampaign]);
+    const handleAddBox = async () => {
+        if (!selectedTrainer) return;
+        const newBox = { id: crypto.randomUUID(), name: `Box ${selectedTrainer.boxes.length + 1}`, pokemon: [] };
+        const newBoxes = [...selectedTrainer.boxes, newBox];
+
+        const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
+        await updateDoc(trainerDocRef, { boxes: newBoxes });
+        setCurrentBoxIndex(newBoxes.length - 1); // Switch to the newly created box
+    };
+
+    const handleDeleteBox = async (boxIndexToDelete) => {
+        if (!selectedTrainer || selectedTrainer.boxes.length <= 1) {
+            dispatch({ type: 'SET_ERROR', payload: "You cannot delete the last box." });
+            return;
+        }
+        if (selectedTrainer.boxes[boxIndexToDelete].pokemon.length > 0) {
+            if (!window.confirm("This box contains Pokémon. Are you sure you want to delete it? The Pokémon will be lost.")) {
+                return;
+            }
+        }
+        const newBoxes = selectedTrainer.boxes.filter((_, index) => index !== boxIndexToDelete);
+        setCurrentBoxIndex(Math.max(0, boxIndexToDelete - 1)); // Move selection to previous box
+
+        const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
+        await updateDoc(trainerDocRef, { boxes: newBoxes });
+    };
+
+    const handleRenameBox = async (newName) => {
+        if (!selectedTrainer) return;
+        const newBoxes = [...selectedTrainer.boxes];
+        newBoxes[currentBoxIndex].name = newName;
+
+        const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
+        await updateDoc(trainerDocRef, { boxes: newBoxes });
+    };
     const handleAssignUser = async (trainerId, userId) => {
         // If "Unassigned" is chosen, userId will be 'null'
         const newUserId = userId === 'null' ? null : userId;
@@ -86,16 +124,20 @@ const TrainerManager = () => {
             currentHp: stats.hp,
         };
     };
-    const handleAddPokemon = useCallback(async (pokemonName) => {
-        if (!selectedTrainerId || !pokemonName.trim() || !user?.uid || !selectedCampaignId) return;
-        const isRosterFull = (selectedTrainer?.roster?.length ?? 0) >= MAX_PARTY_SIZE;
+    const handleAddNewPokemon = useCallback(async (pokemonName, level, destination) => {
+        if (!selectedTrainerId || !pokemonName.trim() || !user?.uid) return;
+
         dispatch({ type: 'SET_LOADING', payload: `Fetching ${pokemonName}...` });
 
-
         try {
-            let initialPokemonData; // Changed name from finalPokemonData
-            const customMatch = customPokemon.find(p => p.name.toLowerCase() === pokemonName.toLowerCase());
+            // --- THIS IS THE NEW LOGIC ---
+            // Determine the correct level based on trainer category
+            const isPartyMember = selectedTrainer.category === 'partyMembers';
+            const finalLevel = isPartyMember ? selectedCampaign.partyLevel : level;
+            // --- END NEW LOGIC ---
 
+            const customMatch = customPokemon.find(p => p.name.toLowerCase() === pokemonName.toLowerCase());
+            let initialPokemonData;
             if (customMatch) {
                 const moveNames = customMatch.moves || [];
                 const moves = await Promise.all(
@@ -105,47 +147,43 @@ const TrainerManager = () => {
                     ...defaultPokemonState,
                     ...customMatch,
                     id: crypto.randomUUID(),
-                    level: 50,
+                    level: finalLevel,
                     moves: moves.map(m => ({ ...m, pp: m.pp, maxPp: m.pp })),
                     forms: customMatch.forms || [],
-                };
-            } else {
-                // Logic for adding an official Pokémon
-                const basePokemonData = await fetchPokemonData(pokemonName, 50, '', customMoves);
-                const forms = officialFormsData[basePokemonData.speciesName] || [];
-                // Create the initial object without stats
-                initialPokemonData = {
-                    ...defaultPokemonState,
-                    ...basePokemonData,
-                    forms: forms,
-                };
-            }
+                }
 
-            // --- THIS IS THE FIX ---
-            // Now, use the helper function to calculate and add the final stats
+            } else {
+                // Pass the finalLevel to the fetch function
+                const basePokemonData = await fetchPokemonData(pokemonName, finalLevel, '', customMoves);
+                initialPokemonData = { ...defaultPokemonState, ...basePokemonData, forms: officialFormsData[basePokemonData.speciesName] || [] };
+            }
             const finalPokemonData = calculateAndSetFinalStats(initialPokemonData);
-            // --- END FIX ---
 
             const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainerId);
-            if (isRosterFull) {
-                // Roster is full, add to box instead
-                const newBox = [...(selectedTrainer.box || []), finalPokemonData];
-                await updateDoc(trainerDocRef, { box: newBox });
-                // Optional: Add a non-error feedback message here if you have a system for it.
-                // For now, it will just silently add to the box.
-            } else {
-                // Roster has space, add normally
-                const newRoster = [...(selectedTrainer.roster || []), finalPokemonData];
-                await updateDoc(trainerDocRef, { roster: newRoster });
-            }
 
+            if (destination.type === 'roster') {
+                if ((selectedTrainer.roster?.length ?? 0) < MAX_PARTY_SIZE) {
+                    const newRoster = [...(selectedTrainer.roster || []), finalPokemonData];
+                    await updateDoc(trainerDocRef, { roster: newRoster });
+                } else {
+                    const newBoxes = structuredClone(selectedTrainer.boxes);
+                    newBoxes[0].pokemon.push(finalPokemonData);
+                    await updateDoc(trainerDocRef, { boxes: newBoxes });
+                }
+            } else if (destination.type === 'box') {
+                const newBoxes = structuredClone(selectedTrainer.boxes);
+                const boxIndex = newBoxes.findIndex(b => b.id === destination.boxId);
+                if (boxIndex > -1) {
+                    newBoxes[boxIndex].pokemon.push(finalPokemonData);
+                    await updateDoc(trainerDocRef, { boxes: newBoxes });
+                }
+            }
         } catch (error) {
             dispatch({ type: 'SET_ERROR', payload: error.message });
         } finally {
             dispatch({ type: 'SET_LOADING', payload: null });
-            setPokemonToAdd('');
         }
-    }, [selectedTrainerId, selectedTrainer, user?.uid, dispatch, trainersCollectionPath, customPokemon, customMoves]);
+    }, [selectedTrainerId, selectedTrainer, selectedCampaign, user?.uid, dispatch, trainersCollectionPath, customPokemon, customMoves]);
 
     const handleSetFinalPokemon = async (pokemonName) => {
         if (!selectedTrainerId || !pokemonName.trim() || !user?.uid || !selectedCampaignId) return;
@@ -173,7 +211,7 @@ const TrainerManager = () => {
             const newTrainer = {
                 name: newTrainerName,
                 roster: [],
-                box: [],
+                boxes: [{ id: crypto.randomUUID(), name: 'Box 1', pokemon: [] }],
                 category: 'partyMembers',
                 finalPokemon: null,
                 bag: {},
@@ -208,37 +246,126 @@ const TrainerManager = () => {
         }
         catch (error) { dispatch({ type: 'SET_ERROR', payload: `Failed to remove Pokémon: ${error.message}` }); }
     };
-    const movePokemonToBox = async (pokemonToMove) => {
+    const handleRemovePokemonFromBox = async (pokemonIdToRemove) => {
         if (!selectedTrainer) return;
 
-        const newRoster = selectedTrainer.roster.filter(p => p.id !== pokemonToMove.id);
-        const newBox = [...(selectedTrainer.box || []), pokemonToMove];
-
-        const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
-        try {
-            await updateDoc(trainerDocRef, { roster: newRoster, box: newBox });
-        } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Failed to move Pokémon to Box: ${error.message}` });
-        }
-    };
-
-    const movePokemonToRoster = async (pokemonToMove) => {
-        if (!selectedTrainer) return;
-
-        if (selectedTrainer.roster.length >= MAX_PARTY_SIZE) {
-            dispatch({ type: 'SET_ERROR', payload: `Roster is full (max ${MAX_PARTY_SIZE} Pokémon).` });
+        if (!window.confirm("Are you sure you want to release this Pokémon permanently?")) {
             return;
         }
 
-        const newBox = selectedTrainer.box.filter(p => p.id !== pokemonToMove.id);
-        const newRoster = [...(selectedTrainer.roster || []), pokemonToMove];
+        // Create a deep copy of the boxes array to modify
+        const newBoxes = structuredClone(selectedTrainer.boxes);
 
+        // Find the current box
+        const boxToUpdate = newBoxes[currentBoxIndex];
+        if (!boxToUpdate) return;
+
+        // Filter out the Pokémon to be removed
+        boxToUpdate.pokemon = boxToUpdate.pokemon.filter(p => p.id !== pokemonIdToRemove);
+
+        // Update the document in Firestore
         const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
         try {
-            await updateDoc(trainerDocRef, { roster: newRoster, box: newBox });
+            await updateDoc(trainerDocRef, { boxes: newBoxes });
         } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Failed to move Pokémon to Roster: ${error.message}` });
+            dispatch({ type: 'SET_ERROR', payload: `Failed to remove Pokémon from box: ${error.message}` });
         }
+    };
+    const handleCardClick = (pokemon, location, isHeld, index, boxId = null) => {
+        // The destination now uses the correct index passed from the map function.
+        const destination = { type: location, index, pokemon, boxId };
+
+        if (heldPokemon || isOrganizeMode) {
+            handleSlotClick(destination);
+        } else {
+            setEditingPokemon({ pokemon, location });
+        }
+    };
+    const handleSlotClick = async (destination) => {
+        // If we're not holding a Pokémon and we clicked on a slot that has one, we "pick it up".
+        if (!heldPokemon && destination.pokemon) {
+            // This is the crucial part. The state must be an object containing both
+            // the Pokémon's data and its origin information.
+            setHeldPokemon({ pokemon: destination.pokemon, origin: destination });
+            return;
+        }
+
+        // If we are holding a Pokémon, this click is an attempt to "drop" it.
+        if (heldPokemon) {
+            // If clicking the same spot, cancel the move (drop it back).
+            if (heldPokemon.origin.type === destination.type && heldPokemon.origin.index === destination.index && heldPokemon.origin.boxId === destination.boxId) {
+                setHeldPokemon(null);
+                return;
+            }
+
+            // Prevent dropping into a full party unless it's a swap.
+            if (destination.type === 'roster' && !destination.pokemon && selectedTrainer.roster.length >= MAX_PARTY_SIZE) {
+                dispatch({ type: 'SET_ERROR', payload: "Party is full. You must swap with a party member." });
+                return;
+            }
+
+            const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
+            let newRoster = [...selectedTrainer.roster];
+            let newBoxes = structuredClone(selectedTrainer.boxes); // Deep copy
+
+            // --- Step A: Remove Pokémon from its origin ---
+            if (heldPokemon.origin.type === 'roster') {
+                newRoster.splice(heldPokemon.origin.index, 1);
+            } else {
+                const originBoxIndex = newBoxes.findIndex(b => b.id === heldPokemon.origin.boxId);
+                if (originBoxIndex !== -1) {
+                    newBoxes[originBoxIndex].pokemon.splice(heldPokemon.origin.index, 1);
+                }
+            }
+
+            // --- Step B: Handle the destination (Swap or Drop) ---
+            const pokemonToDrop = heldPokemon.pokemon;
+            const pokemonAtDestination = destination.pokemon;
+
+            // If we are swapping, put the destination Pokémon back into the origin slot.
+            // We do this first to make space for the Pokémon we are dropping.
+            if (pokemonAtDestination) {
+                if (heldPokemon.origin.type === 'roster') {
+                    newRoster.splice(heldPokemon.origin.index, 0, pokemonAtDestination);
+                } else {
+                    const originBoxIndex = newBoxes.findIndex(b => b.id === heldPokemon.origin.boxId);
+                    if (originBoxIndex !== -1) {
+                        newBoxes[originBoxIndex].pokemon.splice(heldPokemon.origin.index, 0, pokemonAtDestination);
+                    }
+                }
+            }
+
+            // Now, place the held Pokémon into its new home.
+            if (destination.type === 'roster') {
+                newRoster.splice(destination.index, (pokemonAtDestination ? 1 : 0), pokemonToDrop);
+            } else {
+                const destBoxIndex = newBoxes.findIndex(b => b.id === destination.boxId);
+                if (destBoxIndex !== -1) {
+                    newBoxes[destBoxIndex].pokemon.splice(destination.index, (pokemonAtDestination ? 1 : 0), pokemonToDrop);
+                }
+            }
+
+            // --- Step C: Update Firestore and reset state ---
+            try {
+                await updateDoc(trainerDocRef, { roster: newRoster, boxes: newBoxes });
+                setHeldPokemon(null); // Clear the held pokemon
+            } catch (error) {
+                dispatch({ type: 'SET_ERROR', payload: `Move failed: ${error.message}` });
+            }
+        }
+    };
+    const handlePartyLevelChange = async (newLevel) => {
+        const level = Math.max(1, Math.min(100, Number(newLevel)));
+        const campaignDocRef = doc(db, 'campaigns', selectedCampaignId);
+        try {
+            await updateDoc(campaignDocRef, { partyLevel: level });
+        } catch (error) {
+            dispatch({ type: 'SET_ERROR', payload: `Failed to update Party Level: ${error.message}` });
+        }
+    };
+    const handleLoadScenarioForEdit = (scenarioData) => {
+        setScenarioToEdit(scenarioData);
+        setMainView('BATTLE_SETUP');
     };
     const handleSavePokemonEdit = async (editedPokemon, isFinal = false) => {
         if (!selectedTrainerId || !user?.uid || !selectedCampaignId) return;
@@ -453,141 +580,7 @@ const TrainerManager = () => {
             </div>
         );
     };
-    const checkCanFuse = () => {
-        if (!selectedTrainer) return false;
-        const roster = selectedTrainer.roster || [];
-        const bag = selectedTrainer.bag || {};
 
-        for (const baseName in FUSION_RECIPES) {
-            const recipe = FUSION_RECIPES[baseName];
-            const hasBase = roster.some(p => p.speciesName === baseName);
-            const hasPartner = roster.some(p => Object.keys(recipe.partners).includes(p.speciesName));
-            // Normalize both item names for a robust, case-insensitive check.
-            const normalizedRecipeItem = recipe.item.toLowerCase().replace(/\s/g, '-');
-            const hasItem = Object.values(bag).some(item => item.name.toLowerCase().replace(/\s/g, '-') === normalizedRecipeItem);
-
-            if (hasBase && hasPartner && hasItem) {
-                return true; // Found a valid fusion combination
-            }
-        }
-        return false;
-    };
-
-    const checkCanTransform = () => {
-        if (!selectedTrainer) return false;
-        const roster = selectedTrainer.roster || [];
-        if (roster.length === 0) return false;
-
-        const bagItems = Object.values(selectedTrainer.bag || {});
-        if (bagItems.length === 0) {
-            return false;
-        }
-
-        // Create a Set of the exact item names the trainer has for efficient lookup.
-        const trainerItemNames = new Set(bagItems.map(item => item.name.toLowerCase()));
-
-        // Iterate through each transformation recipe.
-        for (const recipeItemName in KEY_ITEM_RECIPES) {
-            // 1. Check if the trainer has the required item by its exact name.
-            if (trainerItemNames.has(recipeItemName.toLowerCase())) {
-                // 2. If yes, check if they have a Pokémon that can use it.
-                const recipe = KEY_ITEM_RECIPES[recipeItemName];
-                const possibleTargets = Object.keys(recipe);
-                const hasTargetPokemon = roster.some(p => p.speciesIdentifier && possibleTargets.includes(p.speciesIdentifier));
-                if (hasTargetPokemon) {
-                    return true; // Found a valid transformation!
-                }
-            }
-        }
-        return false;
-    };
-
-    const canFuse = checkCanFuse();
-    const canTransform = checkCanTransform();
-
-    const handleFusePokemon = async (baseId, partnerId, fusedFormName, requiredItem) => {
-        dispatch({ type: 'SET_LOADING', payload: 'Fusing Pokémon...' });
-        try {
-            // 1. Fetch data for the new fused Pokémon
-            const fusedPokemonData = await fetchPokemonData(fusedFormName);
-            fusedPokemonData.isFused = true;
-            fusedPokemonData.fusionComponents = [baseId, partnerId];
-
-            // 2. Remove the two base Pokémon from the roster
-            const newRoster = selectedTrainer.roster.filter(p => p.id !== baseId && p.id !== partnerId);
-            newRoster.push(fusedPokemonData);
-
-            // 3. THIS BLOCK IS NOW REMOVED TO PREVENT ITEM CONSUMPTION
-            /*
-            const newBag = { ...selectedTrainer.bag };
-            const itemKey = requiredItem.replace(/\s/g, '-').toLowerCase();
-            if (newBag[itemKey] && newBag[itemKey].quantity > 1) {
-                newBag[itemKey].quantity -= 1;
-            } else {
-                delete newBag[itemKey];
-            }
-            */
-
-            // 4. Update the trainer document in Firestore (without changing the bag)
-            const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
-            await updateDoc(trainerDocRef, { roster: newRoster }); // The 'bag: newBag' part is removed
-
-        } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Fusion failed: ${error.message}` });
-        } finally {
-            dispatch({ type: 'SET_LOADING', payload: null });
-        }
-    };
-    const handleKeyItemTransform = async (pokemonId, newFormName) => {
-        dispatch({ type: 'SET_LOADING', payload: 'Transforming Pokémon...' });
-        try {
-            // 1. Find the original Pokémon to preserve its unique data.
-            const originalPokemon = selectedTrainer.roster.find(p => p.id === pokemonId);
-            if (!originalPokemon) throw new Error("Original Pokémon not found for transformation.");
-
-            // 2. Fetch the base data for the new form.
-            const newFormData = await fetchPokemonData(newFormName);
-
-            // 3. Recalculate max HP for the new form, preserving level, IVs, and EVs.
-            const newMaxHp = calculateStat(
-                newFormData.baseStats.hp,
-                originalPokemon.level,
-                true,
-                originalPokemon.ivs.hp,
-                originalPokemon.evs.hp
-            );
-
-            // 4. Create the new Pokémon object by merging the original with the new form's data.
-            const transformedPokemon = {
-                ...originalPokemon, // Preserves ID, name, level, moves, status, item, etc.
-
-                // Overwrite form-specific data
-                speciesName: newFormData.speciesName,
-                speciesIdentifier: newFormData.speciesIdentifier,
-                baseStats: newFormData.baseStats,
-                types: newFormData.types,
-                abilities: newFormData.abilities,
-                forms: newFormData.forms,
-                sprite: getSprite({ ...newFormData, isShiny: originalPokemon.isShiny }),
-
-                // Update stats
-                maxHp: newMaxHp,
-                // Adjust current HP if it exceeds the new maximum
-                currentHp: Math.min(originalPokemon.currentHp, newMaxHp),
-            };
-
-            // 5. Replace the old Pokémon with the new one in the roster.
-            const newRoster = selectedTrainer.roster.map(p => p.id === pokemonId ? transformedPokemon : p);
-
-            const trainerDocRef = doc(db, trainersCollectionPath, selectedTrainer.id);
-            await updateDoc(trainerDocRef, { roster: newRoster });
-
-        } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Transformation failed: ${error.message}` });
-        } finally {
-            dispatch({ type: 'SET_LOADING', payload: null });
-        }
-    };
     const HeldItemIcon = ({ item }) => {
         if (!item?.sprite) return null;
         return <div className="absolute top-1 right-1 bg-gray-500/50 p-0.5 rounded-full z-10" title={item.name}><img src={item.sprite} alt={item.name} className="h-6 w-6" /></div>;
@@ -681,18 +674,26 @@ const TrainerManager = () => {
 
     return (
         <div className="p-4 md:p-8">
-            {isFusionModalOpen && <FusionModal trainer={selectedTrainer} onFuse={handleFusePokemon} onClose={() => setIsFusionModalOpen(false)} />}
-            {isTransformModalOpen && <KeyItemTransformModal trainer={selectedTrainer} onTransform={handleKeyItemTransform} onClose={() => setIsTransformModalOpen(false)} />}
+            {/* Find where you render the views and pass the new props */}
             {editingPokemon && (
                 <PokemonEditorModal
                     pokemon={editingPokemon.pokemon}
                     pokemonLocation={editingPokemon.location}
-                    onMoveToBox={movePokemonToBox}
-                    onMoveToRoster={movePokemonToRoster}
+                    trainerCategory={selectedTrainer.category}
+                    partyLevel={selectedCampaign?.partyLevel}
                     onSave={(p) => handleSavePokemonEdit(p, editingPokemon.isFinal)}
                     onClose={() => setEditingPokemon(null)}
                     dispatch={dispatch}
                     itemList={combinedItemList}
+                />
+            )}
+            {isAddPokemonModalOpen && (
+                <AddPokemonModal
+                    trainer={selectedTrainer}
+                    onClose={() => setIsAddPokemonModalOpen(false)}
+                    onAdd={handleAddNewPokemon}
+                    pokemonList={combinedPokemonList}
+                    dispatch={dispatch}
                 />
             )}
             {healingPokemon && <HealingItemModal pokemon={healingPokemon} trainer={selectedTrainer} onUseItem={handleUseItem} onClose={() => setHealingPokemon(null)} />}
@@ -709,7 +710,24 @@ const TrainerManager = () => {
                         <div className="lg:col-span-2 space-y-6">
                             {Object.entries(trainerCategories).map(([key, title]) => (
                                 <div key={key} className="bg-gray-800 p-4 rounded-lg shadow-lg">
-                                    <h3 className="text-xl font-semibold mb-3 text-indigo-300 border-b border-gray-700 pb-2">{title}</h3>
+                                    <div className="flex justify-between items-center mb-3 border-b border-gray-700 pb-2">
+                                        <h3 className="text-xl font-semibold text-indigo-300">{title}</h3>
+
+                                        {/* Conditionally render the Party Level input ONLY for the Party Members category */}
+                                        {key === 'partyMembers' && (
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-sm font-medium text-yellow-400 whitespace-nowrap">Party Level:</label>
+                                                <input
+                                                    type="number"
+                                                    value={selectedCampaign?.partyLevel || 5}
+                                                    onChange={(e) => handlePartyLevelChange(e.target.value)}
+                                                    className="bg-gray-900 p-1 rounded-md border border-gray-600 w-20 text-center"
+                                                    min="1"
+                                                    max="100"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="space-y-2 min-h-[60px]">
                                         {trainers.filter(t => t.category === key).map((trainer) => (
                                             <div key={trainer.id} onClick={() => dispatch({ type: 'SELECT_TRAINER', payload: trainer.id })} className={`p-3 rounded-md transition flex justify-between items-center cursor-pointer ${selectedTrainerId === trainer.id ? 'bg-indigo-600 ring-2 ring-indigo-400' : 'bg-gray-700 hover:bg-gray-600'}`}>
@@ -749,22 +767,6 @@ const TrainerManager = () => {
                                     <>
                                         <div className="flex justify-between items-center mb-2">
                                             <h2 className="text-2xl font-semibold capitalize">{selectedTrainer?.name || 'Select a Trainer'}</h2>
-                                            <div className="flex gap-2">
-                                                {/* --- CONDITIONALLY RENDERED BUTTONS --- */}
-                                                {canTransform && (
-                                                    <button onClick={() => setIsTransformModalOpen(true)} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded-md text-sm">
-                                                        Transform
-                                                    </button>
-                                                )}
-                                                {canFuse && (
-                                                    <button onClick={() => setIsFusionModalOpen(true)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded-md text-sm">
-                                                        Fuse
-                                                    </button>
-                                                )}
-                                                <button onClick={handleFullRestore} className="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-md text-sm">
-                                                    Restore All
-                                                </button>
-                                            </div>
                                         </div>
                                         <div className="flex border-b border-gray-600 mb-4">
                                             <button onClick={() => setRosterView('ROSTER')} className={`px-3 py-1 font-semibold ${rosterView === 'ROSTER' ? 'border-b-2 border-indigo-400 text-white' : 'text-gray-400'}`}>Roster</button>
@@ -773,47 +775,54 @@ const TrainerManager = () => {
                                         </div>
                                         {rosterView === 'ROSTER' ? (
                                             <div>
-                                                <div className="mb-4">
-                                                    <label className="block text-sm font-medium text-gray-400 mb-1">Category</label>
-                                                    <select value={selectedTrainer.category} onChange={(e) => handleCategoryChange(selectedTrainer.id, e.target.value)} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600">{Object.entries(trainerCategories).map(([key, title]) => (<option key={key} value={key}>{title}</option>))}</select>
+                                                <div className="flex items-end justify-between mb-4 gap-4">
+                                                    <div className="flex-grow">
+                                                        <label className="block text-sm font-medium text-gray-400 mb-1">Category</label>
+                                                        <select value={selectedTrainer.category} onChange={(e) => handleCategoryChange(selectedTrainer.id, e.target.value)} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600">{Object.entries(trainerCategories).map(([key, title]) => (<option key={key} value={key}>{title}</option>))}</select>
+                                                    </div>
+                                                    {/* The Restore All button is now here, smaller and next to the dropdown */}
+                                                    <button onClick={handleFullRestore} className="bg-green-700 hover:bg-green-600 text-white font-semibold py-2 px-3 rounded-md text-sm whitespace-nowrap">
+                                                        Restore All
+                                                    </button>
                                                 </div>
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 min-h-[16rem] max-h-96 overflow-y-auto pr-1">
-                                                    {selectedTrainer.roster?.map((pokemon) => (
-                                                        <div key={pokemon.id} onClick={() => setEditingPokemon({ pokemon, location: 'ROSTER' })} className={`relative group text-center p-2 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 flex flex-col justify-between transition-all duration-200 ${pokemon.fainted ? 'opacity-50' : ''}`}>
-                                                            {pokemon.fainted && (<div className="absolute inset-0 flex items-center justify-center z-20"><span className="text-red-500 font-bold text-lg transform -rotate-12 bg-black/50 px-2 py-1 rounded">FAINTED</span></div>)}
-                                                            <div className="flex items-start justify-between">
-                                                                <PokeballIcon pokemon={pokemon} />
-                                                                <StatusIcon status={pokemon.status} volatileStatuses={pokemon.volatileStatuses} />
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                    {[...Array(MAX_PARTY_SIZE)].map((_, index) => {
+                                                        const pokemon = selectedTrainer.roster[index];
+                                                        const destination = { type: 'roster', index, pokemon };
+                                                        const isHeld = heldPokemon?.pokemon.id === pokemon?.id;
+
+                                                        return pokemon ? (
+                                                            // This is YOUR detailed Pokémon card, now integrated with the new system
+                                                            <div
+                                                                key={pokemon.id}
+                                                                onClick={() => handleCardClick(pokemon, 'roster', isHeld, index)}
+                                                                className={`m-1 relative group text-center p-2 rounded-md flex flex-col justify-between transition-all duration-200 ${isHeld ? 'opacity-30 ring-2 ring-yellow-400' : 'bg-gray-700 hover:bg-gray-600'} ${pokemon.fainted ? 'opacity-50' : ''} ${isOrganizeMode ? 'cursor-grab' : 'cursor-pointer'}`}
+                                                            >
+                                                                {/* Your detailed card content remains, but the "Move to Box" button is removed */}
+                                                                {pokemon.fainted && (<div className="absolute inset-0 flex items-center justify-center z-20"><span className="text-red-500 font-bold text-lg transform -rotate-12 bg-black/50 px-2 py-1 rounded">FAINTED</span></div>)}
+                                                                <div className="flex items-start justify-between"><PokeballIcon pokemon={pokemon} /><StatusIcon status={pokemon.status} volatileStatuses={pokemon.volatileStatuses} /></div>
+                                                                <HeldItemIcon item={pokemon.heldItem} />
+                                                                <div><img src={getSprite(pokemon)} alt={pokemon.name} className="mx-auto h-16 w-16" /><p className="text-sm font-semibold truncate mt-1">{pokemon.name}</p><p className="text-xs font-mono text-yellow-300">HP: {pokemon.currentHp} / {pokemon.maxHp}</p></div>
+                                                                <div className="flex flex-wrap justify-center gap-1 mt-1">{pokemon.types?.map(type => <span key={type} className={`px-1.5 py-0.5 text-xs rounded-full uppercase font-bold ${TYPE_COLORS[type]}`}>{type}</span>)}</div>
+                                                                <div className="text-left text-xs mt-2 space-y-1">{(pokemon.moves || []).map(move => (<div key={move.name} className="flex justify-between items-center"><span className="truncate" title={move.name}>{move.name}</span><span className="font-mono text-gray-400">{move.pp}/{move.maxPp}</span></div>))}</div>
+
+                                                                {/* The hover menu now only contains actions other than moving */}
+                                                                <div className="absolute bottom-1 right-1 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-30">
+                                                                    <button title="Use Item" onClick={(e) => { e.stopPropagation(); setHealingPokemon(pokemon) }} className="bg-blue-600 text-white rounded-full h-6 w-6 flex items-center justify-center shadow-md hover:bg-blue-500 transition-colors">
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M9.293 2.293a1 1 0 0 1 1.414 0l7 7A1 1 0 0 1 17 11h-1v6a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6H3a1 1 0 0 1-.707-1.707l7-7Z" clipRule="evenodd" /></svg>
+                                                                    </button>
+                                                                    <button title="Full Heal" onClick={(e) => { e.stopPropagation(); handleFullHeal(pokemon) }} className="bg-green-600 text-white rounded-full h-6 w-6 flex items-center justify-center shadow-md hover:bg-green-500 transition-colors text-lg font-bold leading-none pb-0.5">+</button>
+                                                                    <button title="Remove Pokémon" onClick={(e) => { e.stopPropagation(); handleRemovePokemon(pokemon.id) }} className="bg-red-600 text-white rounded-full h-6 w-6 flex items-center justify-center shadow-md hover:bg-red-500 transition-colors text-xl font-bold leading-none pb-0.5">-</button>
+                                                                </div>
                                                             </div>
-                                                            <HeldItemIcon item={pokemon.heldItem} />
-                                                            <div>
-                                                                <img src={getSprite(pokemon)} alt={pokemon.name} className="mx-auto h-16 w-16" />
-                                                                <p className="text-sm font-semibold truncate mt-1">{pokemon.name}</p>
-                                                                <p className="text-xs font-mono text-yellow-300">HP: {pokemon.currentHp} / {pokemon.maxHp}</p>
+                                                        ) : (
+                                                            // This renders the empty, clickable drop slots
+                                                            <div key={`empty-roster-${index}`} onClick={() => handleSlotClick({ type: 'roster', index, pokemon: null })} className="m-1 bg-gray-800/50 rounded-md w-23 h-[17rem] flex items-center justify-center cursor-pointer hover:bg-gray-700/50 border-2 border-dashed border-gray-600">
+                                                                {heldPokemon && <span className="text-gray-500">Drop Here</span>}
                                                             </div>
-                                                            <div className="flex flex-wrap justify-center gap-1 mt-1">{pokemon.types?.map(type => <span key={type} className={`px-1.5 py-0.5 text-xs rounded-full uppercase font-bold ${TYPE_COLORS[type]}`}>{type}</span>)}</div>
-                                                            <div className="text-left text-xs mt-2 space-y-1">
-                                                                {(pokemon.moves || []).map(move => (
-                                                                    <div key={move.name} className="flex justify-between items-center"><span className="truncate" title={move.name}>{move.name}</span><span className="font-mono text-gray-400">{move.pp}/{move.maxPp}</span></div>
-                                                                ))}
-                                                            </div>
-                                                            <div className="absolute bottom-1 right-1 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-30">
-                                                                <button title="Move to Box" onClick={(e) => { e.stopPropagation(); movePokemonToBox(pokemon) }} className="bg-purple-600 text-white rounded-full h-6 w-6 flex items-center justify-center shadow-md hover:bg-purple-500 transition-colors">
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M3.5 2A1.5 1.5 0 0 0 2 3.5v13A1.5 1.5 0 0 0 3.5 18h13a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 16.5 2h-13ZM12.5 6a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3a.5.5 0 0 1 .5-.5Z" /></svg>
-                                                                </button>
-                                                                <button title="Use Item" onClick={(e) => { e.stopPropagation(); setHealingPokemon(pokemon) }} className="bg-blue-600 text-white rounded-full h-6 w-6 flex items-center justify-center shadow-md hover:bg-blue-500 transition-colors">
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M9.293 2.293a1 1 0 0 1 1.414 0l7 7A1 1 0 0 1 17 11h-1v6a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6H3a1 1 0 0 1-.707-1.707l7-7Z" clipRule="evenodd" /></svg>
-                                                                </button>
-                                                                <button title="Full Heal" onClick={(e) => { e.stopPropagation(); handleFullHeal(pokemon) }} className="bg-green-600 text-white rounded-full h-6 w-6 flex items-center justify-center shadow-md hover:bg-green-500 transition-colors text-lg font-bold leading-none pb-0.5">+</button>
-                                                                <button title="Remove Pokémon" onClick={(e) => { e.stopPropagation(); handleRemovePokemon(pokemon.id) }} className="bg-red-600 text-white rounded-full h-6 w-6 flex items-center justify-center shadow-md hover:bg-red-500 transition-colors text-xl font-bold leading-none pb-0.5">-</button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
-                                                <form onSubmit={(e) => { e.preventDefault(); handleAddPokemon(pokemonToAdd); }} className="flex space-x-2">
-                                                    <AutocompleteInput value={pokemonToAdd} onChange={setPokemonToAdd} onSelect={handleAddPokemon} placeholder="Add to Party" sourceList={combinedPokemonList} />
-                                                    <button type="submit" disabled={!pokemonToAdd || (selectedTrainer.roster?.length ?? 0) >= MAX_PARTY_SIZE} className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed">Add</button>
-                                                </form>
                                                 {selectedTrainer.category === 'bosses' && (
                                                     <div className="mt-6 pt-4 border-t-2 border-dashed border-red-500">
                                                         <h3 className="text-lg font-bold text-red-400 mb-2 text-center">Final Pokémon</h3>
@@ -841,21 +850,87 @@ const TrainerManager = () => {
                                             <InventoryView trainer={selectedTrainer} itemList={combinedItemList} onBagUpdate={handleBagUpdate} dispatch={dispatch} />
                                         ) : rosterView === 'BOX' ? (
                                             <div>
-                                                <h3 className="text-lg font-semibold text-gray-300 mb-2">Pokémon in Box ({selectedTrainer.box?.length || 0})</h3>
-                                                <div className="flex flex-wrap content-start mb-4 min-h-[16rem] max-h-96 overflow-y-auto pr-1">
-                                                    {selectedTrainer.box?.map((pokemon) => (
-                                                        <div key={pokemon.id} onClick={() => setEditingPokemon({ pokemon, location: 'BOX' })} className="m-1 relative group flex items-center justify-center bg-gray-700/50 rounded-md w-16 h-16 cursor-pointer hover:bg-gray-600/50 transition-colors">
-                                                            <img src={getSprite(pokemon)} alt={pokemon.name} className="h-12 w-12" />
-                                                            {/* The button to open the full editor is now a small gear icon */}
-                                                            <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity z-30">
+                                                {/* --- Box Navigation and Management --- */}
+                                                <div className="flex items-center justify-between gap-2 mb-3 bg-gray-900 p-2 rounded-md">
+                                                    <div className="flex items-center gap-2">
+                                                        <button onClick={() => setCurrentBoxIndex(i => Math.max(0, i - 1))} className="px-2 py-1 bg-indigo-600 rounded hover:bg-indigo-700">←</button>
+
+                                                        {/* The dropdown is now an input for renaming */}
+                                                        <input
+                                                            type="text"
+                                                            value={selectedTrainer.boxes?.[currentBoxIndex]?.name || ''}
+                                                            onChange={e => handleRenameBox(e.target.value)}
+                                                            className="bg-gray-700 p-1 rounded-md border border-gray-600 text-sm text-center w-32"
+                                                        />
+
+                                                        <button onClick={() => setCurrentBoxIndex(i => Math.min(selectedTrainer.boxes.length - 1, i + 1))} className="px-2 py-1 bg-indigo-600 rounded hover:bg-indigo-700">→</button>
+                                                    </div>
+
+                                                    {/* The old, separate input is now gone, leaving only the add/delete buttons */}
+                                                    <div className="flex gap-2">
+                                                        <button onClick={handleAddBox} className="text-sm bg-green-600 px-2 py-1 rounded hover:bg-green-700">+</button>
+                                                        <button onClick={() => handleDeleteBox(currentBoxIndex)} className="text-sm bg-red-600 px-2 py-1 rounded hover:bg-red-700">-</button>
+                                                    </div>
+                                                </div>
+
+                                                {/* --- Pokémon Grid --- */}
+                                                <h3 className="text-lg font-semibold text-gray-300 mb-2">
+                                                    {selectedTrainer.boxes?.[currentBoxIndex]?.name} ({selectedTrainer.boxes?.[currentBoxIndex]?.pokemon.length || 0})
+                                                </h3>
+                                                <div className="grid grid-cols-6 gap-1">
+                                                    {[...Array(30)].map((_, index) => {
+                                                        const currentBox = selectedTrainer.boxes?.[currentBoxIndex];
+                                                        const pokemon = currentBox?.pokemon[index];
+                                                        // We create a destination object for both existing Pokémon and empty slots
+                                                        const destination = { type: 'box', boxId: currentBox?.id, index, pokemon };
+                                                        const isHeld = heldPokemon?.pokemon.id === pokemon?.id;
+
+                                                        return pokemon ? (
+                                                            // This is the card for an existing Pokémon in the box
+                                                            <div
+                                                                key={pokemon.id}
+                                                                onClick={() => handleCardClick(pokemon, 'box', isHeld, index, currentBox?.id)}
+                                                                className={`m-1 relative group flex items-center justify-center rounded-md w-12 h-12 transition-colors ${isHeld ? 'opacity-30 ring-2 ring-yellow-400' : 'bg-gray-700/50 hover:bg-gray-600/50'} ${isOrganizeMode ? 'cursor-grab' : 'cursor-pointer'}`}
+                                                            >
+                                                                <img src={getSprite(pokemon)} alt={pokemon.name} className="h-15 w-15 pointer-events-none" />
+                                                                <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity z-30">
+                                                                    <button
+                                                                        title="Remove Pokémon"
+                                                                        onClick={(e) => { e.stopPropagation(); handleRemovePokemonFromBox(pokemon.id); }}
+                                                                        className="bg-red-600 text-white rounded-full h-4 w-4 flex items-center justify-center shadow-md hover:bg-red-500 transition-colors m-0.5"
+                                                                    >
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-1.009.246-1.855.85-2.433 1.623A2.004 2.004 0 0 0 2 7.558V14.5a2.5 2.5 0 0 0 2.5 2.5h11A2.5 2.5 0 0 0 18 14.5V7.558c0-.422-.128-.826-.367-1.165A2.738 2.738 0 0 0 15.19 5.8C14.61 5.029 13.763 4.42 12.753 4.193V3.75A2.75 2.75 0 0 0 10 1h-1.25ZM10 2.5h-1.25a1.25 1.25 0 0 0-1.25 1.25v.452c.26.04.514.103.762.188a2.5 2.5 0 0 1 1.476 0c.248-.085.502-.148.762-.188V3.75A1.25 1.25 0 0 0 10 2.5ZM9.25 7.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5a.75.75 0 0 1 .75-.75Zm-3 0a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 6.25 7.5Zm6 0a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5a.75.75 0 0 1 .75-.75Z" clipRule="evenodd" /></svg>
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    ))}
+                                                        ) : (
+                                                            // This renders the empty, clickable drop slots
+                                                            <div
+                                                                key={`empty-box-${index}`}
+                                                                onClick={() => handleSlotClick(destination)}
+                                                                className="m-1 bg-gray-800/50 rounded-md w-12 h-12 flex items-center justify-center cursor-pointer hover:bg-gray-700/50 border-2 border-dashed border-gray-600"
+                                                            >
+                                                                {heldPokemon && <span className="text-gray-500 text-xs text-center">Drop Here</span>}
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         ) : ( // <-- This is the final 'else' for the Bag view
                                             <InventoryView trainer={selectedTrainer} itemList={combinedItemList} onBagUpdate={handleBagUpdate} dispatch={dispatch} />
                                         )}
+                                        <div className="flex gap-2 mt-6 pt-4 border-t border-gray-700">
+                                            <button
+                                                onClick={() => setIsOrganizeMode(prev => !prev)}
+                                                title="Toggle Organize Mode"
+                                                className={`flex-1 font-bold py-2 px-3 rounded-md text-sm text-white transition-colors ${isOrganizeMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-500'}`}
+                                            >
+                                                Organize
+                                            </button>
+                                            <button onClick={() => setIsAddPokemonModalOpen(true)} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-3 rounded-md text-sm">
+                                                Add Pokémon
+                                            </button>
+                                        </div>
                                     </>
                                 ) : (
                                     <p className="text-gray-400 italic">Select a trainer to manage their roster.</p>
@@ -866,8 +941,16 @@ const TrainerManager = () => {
                     <div className="text-center mt-8"><button onClick={() => dispatch({ type: 'SET_VIEW', payload: 'BATTLE_SETUP' })} disabled={trainers.length < 1} className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-md transition w-full md:w-auto disabled:bg-gray-600 disabled:cursor-not-allowed">Proceed to Battle Setup</button></div>
                 </>
             )}
+            {mainView === 'BATTLE_SETUP' && (
+                <BattleSetup
+                    state={state}
+                    dispatch={dispatch}
+                    initialScenario={scenarioToEdit}
+                    onLoadComplete={() => setScenarioToEdit(null)}
+                />
+            )}
             {mainView === 'CUSTOM_CONTENT' && <CustomContentManager />}
-            {mainView === 'SCENARIOS' && <div className="text-center p-8 bg-gray-800 rounded-lg"><h2 className="text-3xl font-bold text-indigo-400">Scenarios</h2><p className="mt-2 text-gray-400">This feature is coming soon!</p></div>}
+            {mainView === 'SCENARIOS' && <ScenarioManager onEditScenario={handleLoadScenarioForEdit} />}
         </div>
     );
 }

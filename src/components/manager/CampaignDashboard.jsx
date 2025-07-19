@@ -4,18 +4,35 @@ import InviteModal from './InviteModal';
 import DeleteCampaignModal from './DeleteCampaignModal'; // <-- Add this
 import { deleteCampaignAndSubcollections } from '../../utils/firebaseUtils';
 import { db } from '../../config/firebase';
-import { doc, collection, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import MemberManagementModal from './MemberManagementModal';
 import CampaignSettingsModal from './CampaignSettingsModal';
 
 const CampaignDashboard = ({ campaigns, dispatch, user }) => {
     const [campaignToInvite, setCampaignToInvite] = useState(null);
     const [campaignToDelete, setCampaignToDelete] = useState(null);
     const [editingCampaign, setEditingCampaign] = useState(null);
+    const [managingMembersOf, setManagingMembersOf] = useState(null);
     const [joinCode, setJoinCode] = useState('');
 
     const myCampaigns = campaigns.filter(c => c.role === 'DM');
     const joinedCampaigns = campaigns.filter(c => c.role === 'TRAINER');
 
+    const handleKickMember = async (userIdToKick) => {
+        if (!managingMembersOf) return;
+
+        if (window.confirm(`Are you sure you want to remove this member from the campaign? They will lose access.`)) {
+            const campaignRef = doc(db, 'campaigns', managingMembersOf.id);
+            try {
+                // Use arrayRemove to pull the user's ID from the members array
+                await updateDoc(campaignRef, {
+                    members: arrayRemove(userIdToKick)
+                });
+            } catch (error) {
+                dispatch({ type: 'SET_ERROR', payload: `Failed to kick member: ${error.message}` });
+            }
+        }
+    };
     const handleManageClick = (campaignId) => {
         dispatch({ type: 'SELECT_CAMPAIGN', payload: campaignId });
         dispatch({ type: 'SET_VIEW', payload: 'TRAINER_MANAGER' });
@@ -105,6 +122,13 @@ const CampaignDashboard = ({ campaigns, dispatch, user }) => {
                     dispatch={dispatch}
                 />
             )}
+            {managingMembersOf && (
+                <MemberManagementModal
+                    campaign={managingMembersOf}
+                    onClose={() => setManagingMembersOf(null)}
+                    onKickMember={handleKickMember}
+                />
+            )}
             {/* DM View */}
             <div className="mb-12">
                 <h2 className="text-3xl font-bold text-indigo-400 border-b-2 border-gray-700 pb-2 mb-4">My Campaigns (DM)</h2>
@@ -115,6 +139,9 @@ const CampaignDashboard = ({ campaigns, dispatch, user }) => {
                                 <h3 className="text-xl font-bold mb-4">{campaign.name}</h3>
                                 {/* 4. Modify the buttons div */}
                                 <div className="flex gap-2">
+                                    <button onClick={() => setManagingMembersOf(campaign)} className="bg-teal-600 hover:bg-teal-700 text-white font-bold p-2 rounded-md aspect-square" title="Manage Members">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.25 1.25 0 0 1 .41 1.412A9.957 9.957 0 0 1 10 18c2.31 0 4.438-.784 6.131-2.095a1.25 1.25 0 0 1 .41-1.412A9.998 9.998 0 0 0 10 12a9.998 9.998 0 0 0-6.535 2.493Z" /></svg>
+                                    </button>
                                     <button onClick={() => handleManageClick(campaign.id)} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
                                         Manage
                                     </button>
@@ -128,7 +155,6 @@ const CampaignDashboard = ({ campaigns, dispatch, user }) => {
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M11.09 3.562a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61a1.75 1.75 0 0 1-1.044.512H3.75a.75.75 0 0 1-.75-.75v-1.192a1.75 1.75 0 0 1 .512-1.044l8.61-8.61Zm1.388 1.388a.25.25 0 0 0-.354 0l-8.61 8.61H3.75v.025l8.36-8.36a.25.25 0 0 0 0-.354l-1.086-1.086Z" clipRule="evenodd" /></svg>
                                     </button>
                                     <button onClick={() => setCampaignToDelete(campaign)} className="...">
-                                        {/* ... delete icon ... */}
                                     </button>
                                 </div>
                             </div>
@@ -168,7 +194,7 @@ const CampaignDashboard = ({ campaigns, dispatch, user }) => {
                                 <div>
                                     <h3 className="text-xl font-bold">{campaign.name}</h3>
                                     {/* We will fetch the DM's name in a future step */}
-                                    <p className="text-sm text-gray-400">Campaign by DM</p>
+                                    <p className="text-sm text-gray-400">Campaign by {campaign.dmName}</p>
                                 </div>
                                 <button
                                     onClick={() => {

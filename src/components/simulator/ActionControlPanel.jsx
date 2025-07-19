@@ -88,6 +88,7 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
             willHurtSelfInConfusion: false,
             willFlinch: false,
             quickClawActivated: false,
+            targetIds: [],  // ← Required!
             hits: Array.from({ length: defaultHits }, () => ({ targetId: '' }))
         };
         onEnterTargetingMode(move, baseAction);
@@ -356,16 +357,16 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                                 </div>
                             )}
                             {showQuickClawCheckbox && (
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-cyan-300">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={queuedAction?.quickClawActivated || false} 
-                                            onChange={(e) => handleToggleStatusEvent('quickClawActivated', e.target.checked)} 
-                                            className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded" 
-                                        />
-                                        Quick Claw? (20%)
-                                    </label>
-                                )}
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-cyan-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={queuedAction?.quickClawActivated || false}
+                                        onChange={(e) => handleToggleStatusEvent('quickClawActivated', e.target.checked)}
+                                        className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded"
+                                    />
+                                    Quick Claw? (20%)
+                                </label>
+                            )}
                         </div>
 
                         {/* --- ACTION BUTTONS --- */}

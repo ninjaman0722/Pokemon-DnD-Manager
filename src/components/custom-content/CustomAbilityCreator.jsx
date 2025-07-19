@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useManagerContext } from '../../context/ManagerContext';
 import { doc, addDoc, updateDoc, deleteDoc, collection } from 'firebase/firestore';
-import { db, appId } from '../../config/firebase';
+import { db } from '../../config/firebase';
 import CustomAbilityModal from './CustomAbilityModal';
 
 const CustomAbilityCreator = () => {
@@ -23,11 +23,12 @@ const CustomAbilityCreator = () => {
     const handleSaveCustomAbility = async (abilityData) => {
         dispatch({ type: 'SET_LOADING', payload: 'Saving Custom Ability...' });
         try {
+            const collectionPath = `campaigns/${state.selectedCampaignId}/custom-abilities`;
             if (abilityData.id) {
-                const docRef = doc(db, `artifacts/${appId}/public/data/custom-abilities`, abilityData.id);
+                const docRef = doc(db, collectionPath, abilityData.id);
                 await updateDoc(docRef, abilityData);
             } else {
-                await addDoc(collection(db, `artifacts/${appId}/public/data/custom-abilities`), abilityData);
+                await addDoc(collection(db, collectionPath), abilityData);
             }
         } catch (error) {
             dispatch({ type: 'SET_ERROR', payload: `Failed to save custom ability: ${error.message}` });
@@ -43,7 +44,7 @@ const CustomAbilityCreator = () => {
         }
         dispatch({ type: 'SET_LOADING', payload: 'Deleting...' });
         try {
-            const docRef = doc(db, `artifacts/${appId}/public/data/custom-abilities`, abilityId);
+            const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-abilities`, abilityId);
             await deleteDoc(docRef);
         } catch (error) {
             dispatch({ type: 'SET_ERROR', payload: `Failed to delete custom ability: ${error.message}` });
@@ -62,7 +63,7 @@ const CustomAbilityCreator = () => {
                     + Create New Ability
                 </button>
             </div>
-            
+
             <div className="bg-gray-900/50 p-4 rounded-lg min-h-[200px]">
                 {customAbilities.length > 0 ? (
                     <ul className="space-y-2">
