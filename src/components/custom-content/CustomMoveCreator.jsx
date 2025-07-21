@@ -40,7 +40,7 @@ const CustomMoveCreator = () => {
     const handleSaveCustomMove = async (moveData) => {
         dispatch({ type: 'SET_LOADING', payload: 'Saving Custom Move...' });
         try {
-            const collectionPath = `campaigns/${state.selectedCampaignId}/custom-moves`;
+            const collectionPath = `campaigns/${state.selectedCampaignId }/custom-moves`;
 
             if (moveData.isOverride) {
                 const docId = moveData.name.toLowerCase().replace(/\s/g, '-');
@@ -66,7 +66,7 @@ const CustomMoveCreator = () => {
         }
         dispatch({ type: 'SET_LOADING', payload: 'Deleting...' });
         try {
-            const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-moves`, moveId);
+            const docRef = doc(db, `campaigns/${state.selectedCampaignId }/custom-moves`, moveId);
             await deleteDoc(docRef);
         } catch (error) {
             dispatch({ type: 'SET_ERROR', payload: `Failed to delete custom move: ${error.message}` });

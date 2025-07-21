@@ -1,5 +1,5 @@
 // src/utils/api.js
-
+import { getEffectiveAbility, getStatModifier } from '../hooks/battle-engine/battleUtils';
 import { POKEAPI_BASE_URL } from '../config/gameData';
 import { officialFormsData } from '../config/officialFormsData';
 
@@ -56,35 +56,8 @@ export const getAccuracyEvasionModifier = (stage) => {
     };
     return multipliers[stage] || 1;
 };
-export const getEffectiveAbility = (pokemon, currentBattleState) => {
-    if (!pokemon || !pokemon.ability) {
-        return null;
-    }
 
-    // Check for Neutralizing Gas on the field
-    if (currentBattleState) {
-        const gasUser = currentBattleState.teams
-            .flatMap(t => t.pokemon)
-            .find(p => p && !p.fainted && p.ability.toLowerCase() === 'neutralizing-gas');
 
-        // If gas is active and this isn't the user of the gas, suppress the ability
-        if (gasUser && gasUser.id !== pokemon.id) {
-            return null;
-        }
-    }
-
-    // Check for volatile statuses that suppress abilities
-    if (pokemon.volatileStatuses.some(s => (s.name || s) === 'Ability Suppressed')) {
-        return null;
-    }
-
-    return pokemon.ability;
-};
-
-export const getStatModifier = (stage) => {
-    if (stage >= 0) { return (2 + stage) / 2; }
-    return 2 / (2 - stage);
-};
 
 
 // Add this main calculation function to api.js

@@ -1,0 +1,47 @@
+{
+  "turn": 1,
+  "teams": [
+    {
+      "id": "players",
+      "pokemon": [
+        {
+          "id": "conkeldurr-id",
+          "name": "Conkeldurr",
+          "level": 50,
+          "originalTrainerId": "player-trainer-id",
+          "ability": "guts",
+          "status": "Burned",
+          "types": ["fighting"],
+          "stats": { "attack": 140 },
+          "stat_stages": { "attack": 0 },
+          "moves": [
+            { "name": "facade", "power": 70, "damage_class": { "name": "physical" }, "type": "normal" }
+          ],
+          "volatileStatuses": [],
+          "fainted": false
+        }
+      ]
+    },
+    {
+      "id": "opponent",
+      "pokemon": [
+        {
+          "id": "aggron-id",
+          "name": "Aggron",
+          "level": 50,
+          "ability": "sturdy",
+          "stats": { "defense": 180 },
+          "stat_stages": { "defense": 0 },
+          "volatileStatuses": [],
+          "fainted": false,
+          "types": ["steel", "rock"],
+          "currentHp": 300,
+          "maxHp": 300
+        }
+      ]
+    }
+  ],
+  "activePokemonIndices": { "players": [0], "opponent": [0] },
+  "field": {},
+  "log": []
+}

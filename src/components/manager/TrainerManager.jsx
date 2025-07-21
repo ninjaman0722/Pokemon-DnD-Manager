@@ -354,15 +354,42 @@ const TrainerManager = () => {
             }
         }
     };
-    const handlePartyLevelChange = async (newLevel) => {
-        const level = Math.max(1, Math.min(100, Number(newLevel)));
-        const campaignDocRef = doc(db, 'campaigns', selectedCampaignId);
-        try {
-            await updateDoc(campaignDocRef, { partyLevel: level });
-        } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Failed to update Party Level: ${error.message}` });
-        }
-    };
+const handlePartyLevelChange = async (newLevel) => {
+    const level = Math.max(1, Math.min(100, Number(newLevel)));
+    const campaignDocRef = doc(db, 'campaigns', selectedCampaignId);
+
+    dispatch({ type: 'SET_LOADING', payload: 'Updating Party Level...' });
+
+    try {
+        // 1. Update the campaign party level (as before)
+        await updateDoc(campaignDocRef, { partyLevel: level });
+
+        // 2. Find all trainers in the "partyMembers" category
+        const partyMemberTrainers = trainers.filter(t => t.category === 'partyMembers');
+
+        // 3. Create an array of update promises for each party member
+        const updatePromises = partyMemberTrainers.map(trainer => {
+            const newRoster = trainer.roster.map(pokemon => {
+                // 4. Create a temporary copy of the pokemon with the new level
+                const pokemonWithNewLevel = { ...pokemon, level: level };
+                // 5. Recalculate all stats using your existing helper function
+                return calculateAndSetFinalStats(pokemonWithNewLevel);
+            });
+
+            // 6. Return the promise to update this trainer's document
+            const trainerDocRef = doc(db, trainersCollectionPath, trainer.id);
+            return updateDoc(trainerDocRef, { roster: newRoster });
+        });
+
+        // 7. Execute all update promises
+        await Promise.all(updatePromises);
+
+    } catch (error) {
+        dispatch({ type: 'SET_ERROR', payload: `Failed to update Party Level: ${error.message}` });
+    } finally {
+        dispatch({ type: 'SET_LOADING', payload: null });
+    }
+};
     const handleLoadScenarioForEdit = (scenarioData) => {
         setScenarioToEdit(scenarioData);
         setMainView('BATTLE_SETUP');
@@ -817,7 +844,7 @@ const TrainerManager = () => {
                                                             </div>
                                                         ) : (
                                                             // This renders the empty, clickable drop slots
-                                                            <div key={`empty-roster-${index}`} onClick={() => handleSlotClick({ type: 'roster', index, pokemon: null })} className="m-1 bg-gray-800/50 rounded-md w-23 h-[17rem] flex items-center justify-center cursor-pointer hover:bg-gray-700/50 border-2 border-dashed border-gray-600">
+                                                            <div key={`empty-roster-${index}`} onClick={() => handleSlotClick({ type: 'roster', index, pokemon: null })} className="m-1 bg-gray-800/50 rounded-md w-23 h-fill flex items-center justify-center cursor-pointer hover:bg-gray-700/50 border-2 border-dashed border-gray-600">
                                                                 {heldPokemon && <span className="text-gray-500">Drop Here</span>}
                                                             </div>
                                                         );

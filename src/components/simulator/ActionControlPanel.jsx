@@ -1,97 +1,67 @@
-// src/components/simulator/ActionControlPanel.jsx
-
 import React, { useState, useEffect } from 'react';
-// --- Z-MOVE: STEP 1 -> Import the Z_CRYSTAL_MAP ---
 import { TYPE_COLORS, HIGH_CRIT_RATE_MOVES, CRIT_CHANCE_PERCENTAGES, PROTECTIVE_MOVES, Z_CRYSTAL_MAP, MULTI_HIT_MOVES } from '../../config/gameData';
 import { FORM_CHANGE_METHOD } from '../../config/constants';
 import { calculateCritStage, calculateHitChance } from '../../utils/api';
 
-const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, onUpdateAction, onCancelAction, onEnterTargetingMode }) => {
+const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, onActionReady, onCancelAction, onEnterTargetingMode }) => {
+    // --- STATE AND HANDLERS NOW LIVE HERE ---
     const [view, setView] = useState('FIGHT');
     const [showTransformChoice, setShowTransformChoice] = useState(false);
-    // --- Z-MOVE: STEP 2 -> Add state to track Z-Move mode ---
     const [isZMoveMode, setIsZMoveMode] = useState(false);
-
-    useEffect(() => {
-        setView('FIGHT');
-        setShowTransformChoice(false);
-        // --- Z-MOVE: Reset Z-Move mode when pokemon changes ---
-        setIsZMoveMode(false);
-    }, [pokemon.id]);
-
-    // --- Z-MOVE: STEP 3 -> Add the logic to check if a Z-Move is possible ---
+    const { teams, activePokemonIndices } = battleState;
+    const [playerTeam, opponentTeam] = teams;
+    const getActivePokemon = (team, indices) => indices.map(i => team.pokemon[i]).filter(p => p && !p.fainted);
+    const playerActivePokemon = getActivePokemon(playerTeam, activePokemonIndices.players);
+    const opponentActivePokemon = getActivePokemon(opponentTeam, activePokemonIndices.opponent);
+    const allActivePokemon = [...playerActivePokemon, ...opponentActivePokemon];
     const teamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
     const zMoveHasBeenUsed = battleState.zMoveUsed?.[teamId] || false;
     const crystalData = pokemon.heldItem ? Z_CRYSTAL_MAP[pokemon.heldItem.name.toLowerCase().replace(/\s/g, '-')] : null;
+
     const canUseZMove = !zMoveHasBeenUsed && crystalData &&
         ((crystalData.type && pokemon.moves.some(move => move.type === crystalData.type && move.damage_class.name !== 'status')) ||
             (crystalData.pokemon?.toLowerCase() === pokemon.speciesName?.toLowerCase()));
 
-
-    const availableTransforms = (pokemon.forms || []).filter(form => {
-        if (form.changeMethod !== FORM_CHANGE_METHOD.BATTLE) {
-            return false;
-        }
-        // Use speciesName for move triggers
-        if (form.triggerMove && pokemon.speciesName === 'rayquaza') {
-            return pokemon.moves.some(m => m.name.toLowerCase() === form.triggerMove.toLowerCase());
-        }
-        // Default to held item check
-        if (form.triggerItem && pokemon.heldItem?.name) {
-            return form.triggerItem.toLowerCase() === pokemon.heldItem.name.toLowerCase();
-        }
-        return false;
-    });
-    const canTransform = availableTransforms.length > 0;
+    // --- OTHER HANDLERS ---
+    useEffect(() => {
+        setView('FIGHT');
+        setShowTransformChoice(false);
+        setIsZMoveMode(false);
+    }, [pokemon.id]);
 
     const handleViewChange = (newView) => {
         if (view !== newView) {
             onCancelAction();
-            setIsZMoveMode(false); // Cancel Z-Move mode on view change
+            setIsZMoveMode(false);
             setView(newView);
         }
     };
 
-    const handleSelectTransform = (form) => {
-        onUpdateAction({
-            ...queuedAction,
-            type: 'TRANSFORM',
-            form,
-        });
-        setShowTransformChoice(false);
-    };
-
     const handleSelectMove = (move) => {
         const moveHitData = MULTI_HIT_MOVES.get(move.name.toLowerCase());
+        // This correctly defaults to the minimum number of hits.
         const defaultHits = moveHitData ? moveHitData[0] : 1;
-        let defaultApplyEffect = false;
-        if (move.effects && move.effects.length > 0) {
-            defaultApplyEffect = move.effects[0].chance === 100;
-        } else if (move.meta) {
-            defaultApplyEffect = move.meta.ailment_chance === 100;
-        }
+
+        // Determine if the move's secondary effect should be applied by default.
+        const defaultApplyEffect = (move.effects?.[0]?.chance === 100) || (move.meta?.ailment_chance === 100);
 
         const baseAction = {
             type: 'FIGHT',
             move,
             pokemon,
             applyEffect: defaultApplyEffect,
-            isProtected: PROTECTIVE_MOVES.has(move.name.toLowerCase()),
             isCritical: false,
             willHit: true,
-            willCureStatus: false,
-            isFullyParalyzed: false,
-            willThaw: false,
-            willWakeUp: false,
-            isImmobilizedByLove: false,
-            willSnapOutOfConfusion: false,
-            willHurtSelfInConfusion: false,
-            willFlinch: false,
-            quickClawActivated: false,
-            targetIds: [],  // ← Required!
             hits: Array.from({ length: defaultHits }, () => ({ targetId: '' }))
+            // All other flags like willFlinch, etc., can be added here if needed.
         };
+        onUpdateAction(baseAction);
         onEnterTargetingMode(move, baseAction);
+    };
+
+    // --- This function now correctly uses onActionReady ---
+    const onUpdateAction = (action) => {
+        onActionReady(action);
     };
 
     const handleToggleStatusEvent = (flag, isChecked) => {
@@ -140,7 +110,25 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
             </div>
         );
     };
-
+    const availableTransforms = (pokemon.forms || []).filter(form => {
+        if (form.changeMethod !== 'BATTLE') return false;
+        if (form.triggerMove && pokemon.speciesName === 'rayquaza') {
+            return pokemon.moves.some(m => m.name.toLowerCase() === form.triggerMove.toLowerCase());
+        }
+        if (form.triggerItem && pokemon.heldItem?.name) {
+            return form.triggerItem.toLowerCase() === pokemon.heldItem.name.toLowerCase();
+        }
+        return false;
+    });
+    const handleSelectTransform = (form) => {
+        onActionReady({
+            ...queuedAction,
+            type: 'TRANSFORM',
+            form,
+        });
+        setShowTransformChoice(false);
+    };
+    const canTransform = availableTransforms.length > 0;
     const renderContent = () => {
         switch (view) {
             case 'POKEMON':
@@ -148,7 +136,7 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                 return benched.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 overflow-y-auto h-full pr-2">
                         {benched.map(p => (
-                            <button key={p.id} onClick={() => onUpdateAction({ type: 'SWITCH', targetId: p.id, pokemon })} className={`bg-gray-700 hover:bg-gray-600 p-2 rounded flex flex-col items-center text-center ${queuedAction?.type === 'SWITCH' && queuedAction?.targetId === p.id ? 'ring-2 ring-yellow-300' : ''}`}>
+                            <button key={p.id} onClick={() => onUpdateAction({ type: 'SWITCH', newPokemonId: p.id, pokemon })} className={`bg-gray-700 hover:bg-gray-600 p-2 rounded flex flex-col items-center text-center ${queuedAction?.type === 'SWITCH' && queuedAction?.targetId === p.id ? 'ring-2 ring-yellow-300' : ''}`}>
                                 <img src={p.sprite} alt={p.name} className="h-20 w-20" />
                                 <span className="text-sm font-semibold truncate">{p.name}</span>
                             </button>
@@ -157,134 +145,87 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                 ) : <p className="text-gray-400 italic text-center my-auto">No Pokémon to switch to.</p>;
             case 'BAG':
                 return <p className="text-gray-400 italic text-center my-auto">Using items from this panel is under development.</p>;
+            // Inside renderContent function in ActionControlPanel.jsx
+
             case 'FIGHT':
             default:
                 const selectedMove = queuedAction?.move;
-                const showApplyEffectCheckbox = (selectedMove?.meta?.ailment?.name !== 'none' && selectedMove?.meta?.ailment_chance > 0) || (selectedMove?.effects?.length > 0);
-                const showCritCheckbox = selectedMove && selectedMove.power > 0;
-                const attackerHoldsFlinchItem = ['kings-rock', 'razor-fang'].includes(pokemon.heldItem?.name.toLowerCase());
-                const showFlinchCheckbox = selectedMove && selectedMove.power > 0 && attackerHoldsFlinchItem;
-                const showTransformButton = canTransform && (queuedAction?.type === 'FIGHT' || queuedAction?.type === 'TRANSFORM');
-                const showZMoveButton = canUseZMove && !queuedAction && view === 'FIGHT';
-                const isConfused = pokemon.volatileStatuses.includes('Confused');
-                const showConfusionOptions = isConfused && queuedAction;
-                const isInfatuated = pokemon.volatileStatuses.includes('Infatuated');
-                const showInfatuationOptions = isInfatuated && queuedAction;
-                const showWillHitCheckbox = selectedMove && selectedMove.accuracy !== null;
-                const moveHitData = selectedMove && MULTI_HIT_MOVES.get(selectedMove.name.toLowerCase());
-                const showMultiHitControl = !!moveHitData;
-                const holdsLoadedDice = pokemon.heldItem?.name.toLowerCase() === 'loaded-dice';
-                const opponentTeam = battleState.teams.find(t => t.id !== teamId);
-                const validTargets = opponentTeam?.pokemon.filter(p => p && !p.fainted) || [];
-                const holdsQuickClaw = pokemon.heldItem?.name.toLowerCase() === 'quick-claw';
-                const showQuickClawCheckbox = holdsQuickClaw && queuedAction;
 
+                // If a move is selected, show the detailed controls panel.
+                if (selectedMove) {
+                    const showApplyEffectCheckbox = (selectedMove?.meta?.ailment?.name !== 'none' && selectedMove?.meta?.ailment_chance > 0) || (selectedMove?.effects?.length > 0);
+                    const showCritCheckbox = selectedMove && selectedMove.power > 0;
+                    const showWillHitCheckbox = selectedMove && selectedMove.accuracy !== null;
+                    const attackerHoldsFlinchItem = ['kings-rock', 'razor-fang'].includes(pokemon.heldItem?.name.toLowerCase());
+                    const showFlinchCheckbox = selectedMove && selectedMove.power > 0 && attackerHoldsFlinchItem;
+                    const isConfused = pokemon.volatileStatuses.includes('Confused');
+                    const showConfusionOptions = isConfused && queuedAction;
+                    const isInfatuated = pokemon.volatileStatuses.includes('Infatuated');
+                    const showInfatuationOptions = isInfatuated && queuedAction;
+                    const moveHitData = selectedMove && MULTI_HIT_MOVES.get(selectedMove.name.toLowerCase());
+                    const showMultiHitControl = !!moveHitData;
+                    const holdsLoadedDice = pokemon.heldItem?.name.toLowerCase() === 'loaded-dice';
+                    const holdsQuickClaw = pokemon.heldItem?.name.toLowerCase() === 'quick-claw';
+                    const showQuickClawCheckbox = holdsQuickClaw && queuedAction;
+                    const opponentTeam = battleState.teams.find(t => t.id !== teamId);
+                    const validTargets = opponentTeam?.pokemon.filter(p => p && !p.fainted) || [];
 
-                let hitChanceText = '';
-                if (showWillHitCheckbox && queuedAction?.targetIds?.length > 0) {
-                    const primaryTarget = battleState.teams.flatMap(t => t.pokemon).find(p => p.id === queuedAction.targetIds[0]);
-                    if (primaryTarget) {
-                        const chance = calculateHitChance(pokemon, primaryTarget, selectedMove, battleState);
-                        const fraction = chance === 100 ? "4/4" : chance >= 75 ? "3/4" : chance >= 66 ? "2/3" : chance >= 50 ? "1/2" : "<1/2";
-                        hitChanceText = ` ${chance}% (${fraction})`;
-                    }
-                }
-                let hitRangeText = '';
-                if (moveHitData) {
-                    let minHits = moveHitData[0];
-                    const maxHits = moveHitData[1];
-                    if (holdsLoadedDice) {
-                        minHits = 4;
-                    }
-                    hitRangeText = `(${minHits}-${maxHits} hits)`;
-                }
-
-                // Handler for when the DM changes the target for a specific hit
-                const handleHitTargetChange = (hitIndex, targetId) => {
-                    const newHits = [...(queuedAction.hits || [])];
-                    if (newHits[hitIndex]) {
-                        newHits[hitIndex] = { ...newHits[hitIndex], targetId };
-                        onUpdateAction({ ...queuedAction, hits: newHits });
-                    }
-                };
-
-                // Handler for when the DM changes the total number of hits
-                const handleNumberOfHitsChange = (num) => {
-                    const newNumberOfHits = Math.max(1, num);
-                    const currentHits = queuedAction.hits || [];
-                    const newHits = [];
-
-                    // Get the last valid target to use as a default for new hits
-                    const lastTargetId = currentHits.length > 0 ? currentHits[currentHits.length - 1].targetId : (validTargets[0]?.id || '');
-
-                    for (let i = 0; i < newNumberOfHits; i++) {
-                        // Keep existing assignments or add new ones with the default target
-                        if (currentHits[i]) {
-                            newHits.push(currentHits[i]);
-                        } else {
-                            newHits.push({ targetId: lastTargetId });
+                    let hitChanceText = '';
+                    if (showWillHitCheckbox && queuedAction?.targetIds?.length > 0) {
+                        const primaryTarget = battleState.teams.flatMap(t => t.pokemon).find(p => p.id === queuedAction.targetIds[0]);
+                        if (primaryTarget) {
+                            const chance = calculateHitChance(pokemon, primaryTarget, selectedMove, battleState);
+                            const fraction = chance === 100 ? "4/4" : chance >= 75 ? "3/4" : chance >= 66 ? "2/3" : chance >= 50 ? "1/2" : "<1/2";
+                            hitChanceText = ` ${chance}% (${fraction})`;
                         }
                     }
-                    onUpdateAction({ ...queuedAction, hits: newHits.slice(0, newNumberOfHits) });
-                };
-                // This is the variable from the error message, now declared in the correct place.
 
-                let critChance = 'N/A';
-                if (showCritCheckbox) {
-                    const critStage = calculateCritStage(pokemon, selectedMove, HIGH_CRIT_RATE_MOVES);
-                    critChance = CRIT_CHANCE_PERCENTAGES[critStage] || '100%';
-                }
-                return (
-                    <div className="h-full flex flex-col relative">
-                        {renderTransformChoice()}
+                    let critChance = 'N/A';
+                    if (showCritCheckbox) {
+                        const critStage = calculateCritStage(pokemon, selectedMove, HIGH_CRIT_RATE_MOVES);
+                        critChance = CRIT_CHANCE_PERCENTAGES[critStage] || '100%';
+                    }
 
-                        {/* --- MOVE SELECTION GRID --- */}
-                        <div className="grid grid-cols-2 gap-2 flex-grow">
-                            {isZMoveMode ? (
-                                // Z-Move Selection View
-                                pokemon.moves.map((move, index) => {
-                                    const canBeZMove = crystalData.type && move.type === crystalData.type && move.damage_class.name !== 'status';
-                                    const handleZMoveSelect = () => {
-                                        const zMoveAction = {
-                                            type: 'Z_MOVE',
-                                            pokemon: pokemon,
-                                            baseMove: move,
-                                            applyEffect: true,
-                                            isCritical: false,
-                                            // Z-Moves always hit a single target, so we can use the old structure
-                                            hits: (queuedAction?.hits || []).map(h => ({ targetId: h.targetId }))
-                                        };
-                                        onEnterTargetingMode(move, zMoveAction);
-                                        setIsZMoveMode(false);
-                                    };
-                                    return (
-                                        <button key={index} onClick={handleZMoveSelect} disabled={!canBeZMove} className="p-2 rounded bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-md border-b-4 border-black/20 text-lg flex flex-col justify-center items-center disabled:bg-gray-700 disabled:opacity-50">
-                                            <span className="text-yellow-300">{crystalData.moveName}</span>
-                                            <span className="text-xs opacity-80">(from {move.name})</span>
-                                        </button>
-                                    );
-                                })
-                            ) : (
-                                // Standard Move Selection View
-                                pokemon.moves.map(move => {
-                                    const isSelected = (queuedAction?.type === 'FIGHT' || queuedAction?.type === 'TRANSFORM') && queuedAction?.move?.name === move.name;
-                                    const disabled = isMoveDisabled(move);
-                                    const typeColor = TYPE_COLORS[move.type] || 'bg-gray-500';
-                                    return (
-                                        <button key={move.name} onClick={() => handleSelectMove(move)} disabled={disabled} className={`${typeColor} p-2 rounded capitalize font-semibold shadow-md border-b-4 border-black/20 text-lg flex flex-col justify-center items-center ${isSelected ? 'ring-2 ring-yellow-300' : ''} disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed`}>
-                                            <span>{move.name}</span>
-                                            <span className="text-xs opacity-80">{move.pp}/{move.maxPp} PP</span>
-                                        </button>
-                                    );
-                                })
-                            )}
-                        </div>
+                    let hitRangeText = '';
+                    if (moveHitData) {
+                        let minHits = moveHitData[0];
+                        const maxHits = moveHitData[1];
+                        if (holdsLoadedDice) minHits = 4;
+                        hitRangeText = `(${minHits}-${maxHits} hits)`;
+                    }
 
-                        {/* --- DM CONTROLS & HIT ASSIGNMENT PANEL --- */}
-                        <div className="flex-shrink-0 pt-3 mt-3 border-t border-gray-700 space-y-3">
+                    const handleHitTargetChange = (hitIndex, targetId) => {
+                        const newHits = [...(queuedAction.hits || [])];
+                        if (newHits[hitIndex]) {
+                            newHits[hitIndex] = { ...newHits[hitIndex], targetId };
+                            onUpdateAction({ ...queuedAction, hits: newHits });
+                        }
+                    };
 
-                            {/* --- General DM Checkboxes --- */}
-                            <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+                    const handleNumberOfHitsChange = (num) => {
+                        const newNumberOfHits = Math.max(1, num);
+                        const currentHits = queuedAction.hits || [];
+                        const newHits = [];
+                        const lastTargetId = currentHits.length > 0 ? currentHits[currentHits.length - 1].targetId : (validTargets[0]?.id || '');
+
+                        for (let i = 0; i < newNumberOfHits; i++) {
+                            if (currentHits[i]) {
+                                newHits.push(currentHits[i]);
+                            } else {
+                                newHits.push({ targetId: lastTargetId });
+                            }
+                        }
+                        onUpdateAction({ ...queuedAction, hits: newHits.slice(0, newNumberOfHits) });
+                    };
+
+                    return (
+                        <div className="h-full flex flex-col relative p-2 space-y-3 overflow-y-auto pr-3">
+                            <div className="flex justify-between items-center flex-shrink-0">
+                                <h3 className="text-xl font-bold text-yellow-300 capitalize">{selectedMove.name}</h3>
+                                <button onClick={onCancelAction} className="text-sm bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded">Change Move</button>
+                            </div>
+
+                            <div className="flex items-center gap-x-4 gap-y-2 flex-wrap p-2 border border-gray-700 rounded-lg">
                                 {showWillHitCheckbox && <label className="flex items-center gap-2 cursor-pointer text-sm">
                                     <input type="checkbox" checked={queuedAction?.willHit ?? true} onChange={(e) => handleToggleStatusEvent('willHit', e.target.checked)} className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded" />
                                     Will it hit?
@@ -302,6 +243,12 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                                     <input type="checkbox" checked={queuedAction?.willFlinch || false} onChange={(e) => handleToggleStatusEvent('willFlinch', e.target.checked)} className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded" />
                                     Will it flinch? (10%)
                                 </label>}
+                                {showQuickClawCheckbox && (
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-cyan-300">
+                                        <input type="checkbox" checked={queuedAction?.quickClawActivated || false} onChange={(e) => handleToggleStatusEvent('quickClawActivated', e.target.checked)} className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded" />
+                                        Quick Claw? (20%)
+                                    </label>
+                                )}
                                 {showConfusionOptions && (
                                     <>
                                         <label className="flex items-center gap-2 cursor-pointer text-sm text-teal-300">
@@ -322,7 +269,6 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                                 )}
                             </div>
 
-                            {/* --- Multi-Hit Assignment Panel --- */}
                             {showMultiHitControl && queuedAction && (
                                 <div className="p-3 border border-gray-700 rounded-lg bg-gray-800/50 space-y-2">
                                     <div className="flex items-center gap-3">
@@ -356,39 +302,54 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                                     </div>
                                 </div>
                             )}
-                            {showQuickClawCheckbox && (
-                                <label className="flex items-center gap-2 cursor-pointer text-sm text-cyan-300">
-                                    <input
-                                        type="checkbox"
-                                        checked={queuedAction?.quickClawActivated || false}
-                                        onChange={(e) => handleToggleStatusEvent('quickClawActivated', e.target.checked)}
-                                        className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded"
-                                    />
-                                    Quick Claw? (20%)
-                                </label>
-                            )}
                         </div>
+                    );
+                }
+                // Otherwise, show the default move selection view.
+                else {
+                    const showTransformButton = canTransform;
+                    const showZMoveButton = canUseZMove;
 
-                        {/* --- ACTION BUTTONS --- */}
-                        <div className="flex items-center justify-end gap-2 mt-auto pt-3">
-                            {isZMoveMode && (
-                                <button onClick={() => setIsZMoveMode(false)} className="bg-gray-600 hover:bg-gray-500 p-2 rounded w-full font-bold">
-                                    Cancel Z-Move
-                                </button>
-                            )}
-                            {showZMoveButton && (
-                                <button onClick={() => setIsZMoveMode(true)} className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md">
-                                    Z-Move
-                                </button>
-                            )}
-                            {showTransformButton && (
-                                <button onClick={() => setShowTransformChoice(true)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md">
-                                    {queuedAction?.type === 'TRANSFORM' ? 'Transformed!' : 'Mega Evolve!'}
-                                </button>
-                            )}
+                    return (
+                        <div className="h-full flex flex-col relative">
+                            {renderTransformChoice()}
+                            <div className="grid grid-cols-2 gap-2 flex-grow">
+                                {isZMoveMode ? (
+                                    pokemon.moves.map((move, index) => {
+                                        const canBeZMove = crystalData.type && move.type === crystalData.type && move.damage_class.name !== 'status';
+                                        const handleZMoveSelect = () => {
+                                            const zMoveAction = { type: 'Z_MOVE', pokemon, baseMove: move, isCritical: false, hits: [{ targetId: '' }] };
+                                            onEnterTargetingMode(move, zMoveAction);
+                                            setIsZMoveMode(false);
+                                        };
+                                        return (
+                                            <button key={index} onClick={handleZMoveSelect} disabled={!canBeZMove} className="p-2 rounded bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-md border-b-4 border-black/20 text-lg flex flex-col justify-center items-center disabled:bg-gray-700 disabled:opacity-50">
+                                                <span className="text-yellow-300">{crystalData.moveName}</span>
+                                                <span className="text-xs opacity-80">(from {move.name})</span>
+                                            </button>
+                                        );
+                                    })
+                                ) : (
+                                    pokemon.moves.map(move => {
+                                        const disabled = isMoveDisabled(move);
+                                        const typeColor = TYPE_COLORS[move.type] || 'bg-gray-500';
+                                        return (
+                                            <button key={move.name} onClick={() => handleSelectMove(move)} disabled={disabled} className={`${typeColor} p-2 rounded capitalize font-semibold shadow-md border-b-4 border-black/20 text-lg flex flex-col justify-center items-center disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed`}>
+                                                <span>{move.name}</span>
+                                                <span className="text-xs opacity-80">{move.pp}/{move.maxPp} PP</span>
+                                            </button>
+                                        );
+                                    })
+                                )}
+                            </div>
+                            <div className="flex items-center justify-end gap-2 mt-auto pt-3">
+                                {isZMoveMode && <button onClick={() => setIsZMoveMode(false)} className="bg-gray-600 hover:bg-gray-500 p-2 rounded w-full font-bold">Cancel Z-Move</button>}
+                                {showZMoveButton && <button onClick={() => setIsZMoveMode(true)} className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md">Z-Move</button>}
+                                {showTransformButton && <button onClick={() => setShowTransformChoice(true)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md">Mega Evolve!</button>}
+                            </div>
                         </div>
-                    </div>
-                );
+                    );
+                }
         }
     };
 

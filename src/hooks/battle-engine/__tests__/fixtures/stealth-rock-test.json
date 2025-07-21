@@ -1,0 +1,48 @@
+{
+  "turn": 1,
+  "teams": [
+    {
+      "id": "players",
+      "pokemon": [
+        {
+          "id": "active-pokemon-id",
+          "name": "Pikachu",
+          "originalTrainerId": "player-trainer-id",
+          "volatileStatuses": []
+        },
+        {
+          "id": "charizard-id",
+          "name": "Charizard",
+          "originalTrainerId": "player-trainer-id",
+          "types": ["fire", "flying"],
+          "maxHp": 153,
+          "currentHp": 153,
+          "fainted": false,
+          "volatileStatuses": []
+        }
+      ]
+    },
+    {
+      "id": "opponent",
+      "pokemon": [
+        {
+          "id": "opponent-pokemon-id",
+          "name": "Geodude",
+          "volatileStatuses": []
+        }
+      ]
+    }
+  ],
+  "activePokemonIndices": {
+    "players": [0],
+    "opponent": [0]
+  },
+  "field": {
+    "hazards": {
+      "players": {
+        "stealth-rock": 1
+      }
+    }
+  },
+  "log": []
+}

@@ -1,4 +1,3 @@
-// src/hooks/useDynamicStats.js
 import { useMemo } from 'react';
 import { useManagerContext } from '../context/ManagerContext';
 import { calculateStat } from '../utils/api';

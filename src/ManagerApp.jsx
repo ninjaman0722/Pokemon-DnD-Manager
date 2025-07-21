@@ -31,7 +31,7 @@ const initialState = {
     combinedAbilityList: [],
     user: null, // To store the user object
     campaigns: [], // To store the user's campaigns
-    selectedCampaignId: null, // To store the currently active campaign
+    selectedCampaignId: null // To store the currently active campaign
 };
 
 function appReducer(state, action) {

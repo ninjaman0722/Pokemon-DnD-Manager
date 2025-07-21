@@ -1,0 +1,18 @@
+[
+  {
+    "id": "player-trainer-id",
+    "name": "Player",
+    "roster": [
+      {
+        "id": "active-pokemon-id",
+        "name": "Pikachu",
+        "types": ["electric"]
+      },
+      {
+        "id": "charizard-id",
+        "name": "Charizard",
+        "types": ["fire", "flying"]
+      }
+    ]
+  }
+]

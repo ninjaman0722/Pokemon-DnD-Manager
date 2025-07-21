@@ -4,27 +4,28 @@
  * The value is an object containing specific "hook" functions that the engine will call
  * at different points in the battle.
  *
- * @param {object} self - The Pokémon object that has the ability.
+ * @param {object} pokemon - The Pokémon object that has the ability.
  * @param {object} battleState - The entire current battle state.
  * @param {Array} newLog - The array of log entries to push new messages to.
  * @param {object} [target] - The opposing Pokémon, when applicable.
  * @param {object} [move] - The move being used, when applicable.
  * @param {number} [damage] - The calculated damage, when applicable.
  */
-import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTABLE_MOVES } from './gameData';
-import { calculateStat, getStatModifier } from '../utils/api';
+import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTABLE_MOVES, CONTACT_MOVES, SOUND_MOVES } from './gameData';
+import { calculateStat } from '../utils/api';
+import { getStatModifier, getEffectiveAbility } from '../hooks/battle-engine/battleUtils';
 // --- Helper Functions ---
-const getActiveOpponents = (self, battleState, newLog) => {
-    const selfTeamId = battleState.teams.find(t => t.pokemon.some(p => p.id === self.id))?.id;
-    if (!selfTeamId) return [];
+const getActiveOpponents = (pokemon, battleState, newLog) => {
+    const pokemonTeamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
+    if (!pokemonTeamId) return [];
 
-    const opponentTeam = battleState.teams.find(t => t.id !== selfTeamId);
+    const opponentTeam = battleState.teams.find(t => t.id !== pokemonTeamId);
     const opponentKey = opponentTeam.id === 'players' ? 'players' : 'opponent';
 
     return opponentTeam.pokemon.filter((p, i) => battleState.activePokemonIndices[opponentKey].includes(i) && p && !p.fainted);
 };
 
-const setWeather = (weatherType, turns, message, self, battleState, newLog) => {
+const setWeather = (weatherType, turns, message, pokemon, battleState, newLog) => {
     if (battleState.field.weather !== weatherType && battleState.field.weather !== 'strong-winds') {
         battleState.field.weather = weatherType;
         battleState.field.weatherTurns = turns;
@@ -32,7 +33,7 @@ const setWeather = (weatherType, turns, message, self, battleState, newLog) => {
     }
 };
 
-const setTerrain = (terrainType, turns, message, self, battleState, newLog) => {
+const setTerrain = (terrainType, turns, message, pokemon, battleState, newLog) => {
     if (battleState.field.terrain !== terrainType) {
         battleState.field.terrain = terrainType;
         battleState.field.terrainTurns = turns;
@@ -45,73 +46,64 @@ const setTerrain = (terrainType, turns, message, self, battleState, newLog) => {
 export const abilityEffects = {
     // --- Switch-In Abilities ---
     'intimidate': {
-        onSwitchIn: (self, battleState, newLog, applyStatChange) => {
-            const opponents = getActiveOpponents(self, battleState);
+        onSwitchIn: (pokemon, battleState, newLog, statChanger) => {
+            const opponents = getActiveOpponents(pokemon, battleState);
             if (opponents.length > 0) {
-                newLog.push({ type: 'text', text: `${self.name}'s Intimidate cuts the foe's attack!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Intimidate cuts the foe's attack!` });
                 opponents.forEach(opp => {
-                    // Apply the Attack drop
-                    applyStatChange(opp, 'attack', -1, newLog, battleState);
-
-                    // --- NEW LOGIC for Adrenaline Orb ---
-                    // Check if the opponent is holding an item with an onIntimidated hook
-                    const oppItemName = opp.heldItem?.name.toLowerCase();
-                    if (itemEffects[oppItemName]?.onIntimidated) {
-                        // Call the item's hook
-                        itemEffects[oppItemName].onIntimidated(opp, battleState, newLog, applyStatChange);
-                    }
-                    // --- END NEW LOGIC ---
+                    statChanger(opp, 'attack', -1, newLog, battleState);
+                    // The Adrenaline Orb logic will be moved to the main engine later
                 });
             }
         }
     },
     'drizzle': {
-        onSwitchIn: (self, battleState, newLog) => {
-            const turns = self.heldItem?.name.toLowerCase() === 'damp rock' ? 8 : 5;
-            setWeather('rain', turns, 'It started to rain!', self, battleState, newLog);
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'damp rock' ? 8 : 5;
+            setWeather('rain', turns, 'It started to rain!', pokemon, battleState, newLog);
         }
     },
     'primordial-sea': { // This is a strong weather, not extended by items
-        onSwitchIn: (self, battleState, newLog) => setWeather('heavy-rain', 9999, 'A heavy rain began to fall!', self, battleState, newLog)
+        onSwitchIn: (pokemon, battleState, newLog) => setWeather('heavy-rain', 9999, 'A heavy rain began to fall!', pokemon, battleState, newLog)
     },
     'sand-stream': {
-        onSwitchIn: (self, battleState, newLog) => {
-            const turns = self.heldItem?.name.toLowerCase() === 'smooth rock' ? 8 : 5;
-            setWeather('sandstorm', turns, 'A sandstorm kicked up!', self, battleState, newLog);
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'smooth rock' ? 8 : 5;
+            setWeather('sandstorm', turns, 'A sandstorm kicked up!', pokemon, battleState, newLog);
         }
     },
     'drought': {
-        onSwitchIn: (self, battleState, newLog) => {
-            const turns = self.heldItem?.name.toLowerCase() === 'heat rock' ? 8 : 5;
-            setWeather('sunshine', turns, 'The sunlight turned harsh!', self, battleState, newLog);
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'heat rock' ? 8 : 5;
+            setWeather('sunshine', turns, 'The sunlight turned harsh!', pokemon, battleState, newLog);
         }
     },
     'orichalcum-pulse': { // Same as Drought for now
-        onSwitchIn: (self, battleState, newLog) => {
-            const turns = self.heldItem?.name.toLowerCase() === 'heat rock' ? 8 : 5;
-            setWeather('sunshine', turns, 'The sunlight turned harsh!', self, battleState, newLog);
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'heat rock' ? 8 : 5;
+            setWeather('sunshine', turns, 'The sunlight turned harsh!', pokemon, battleState, newLog);
         }
     },
     'desolate-land': { // This is a strong weather, not extended by items
-        onSwitchIn: (self, battleState, newLog) => setWeather('harsh-sunshine', 9999, 'The sunlight became extremely harsh!', self, battleState, newLog)
+        onSwitchIn: (pokemon, battleState, newLog) => setWeather('harsh-sunshine', 9999, 'The sunlight became extremely harsh!', pokemon, battleState, newLog)
     },
     'snow-warning': {
-        onSwitchIn: (self, battleState, newLog) => {
-            const turns = self.heldItem?.name.toLowerCase() === 'icy rock' ? 8 : 5;
-            setWeather('snow', turns, 'It started to snow!', self, battleState, newLog);
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'icy rock' ? 8 : 5;
+            setWeather('snow', turns, 'It started to snow!', pokemon, battleState, newLog);
         }
     },
     'delta-stream': {
-        onSwitchIn: (self, battleState, newLog) => setWeather('strong-winds', 9999, 'A mysterious air current is protecting Flying-type Pokemon!', self, battleState, newLog)
+        onSwitchIn: (pokemon, battleState, newLog) => setWeather('strong-winds', 9999, 'A mysterious air current is protecting Flying-type Pokemon!', pokemon, battleState, newLog)
     },
     'grassy-surge': {
-        onSwitchIn: (self, battleState, newLog) => setTerrain('grassy-terrain', 5, 'The battlefield became grassy!', self, battleState, newLog)
+        onSwitchIn: (pokemon, battleState, newLog) => setTerrain('grassy-terrain', 5, 'The battlefield became grassy!', pokemon, battleState, newLog)
     },
     'misty-surge': {
-        onSwitchIn: (self, battleState, newLog) => setTerrain('misty-terrain', 5, 'The battlefield became misty!', self, battleState, newLog)
+        onSwitchIn: (pokemon, battleState, newLog) => setTerrain('misty-terrain', 5, 'The battlefield became misty!', pokemon, battleState, newLog)
     },
     'psychic-surge': {
-        onSwitchIn: (self, battleState, newLog) => setTerrain('psychic-terrain', 5, 'The battlefield became psychic..y!', self, battleState, newLog)
+        onSwitchIn: (pokemon, battleState, newLog) => setTerrain('psychic-terrain', 5, 'The battlefield became psychic..y!', pokemon, battleState, newLog)
     },
 
     // --- Damage & Stat Modifying Abilities ---
@@ -123,37 +115,37 @@ export const abilityEffects = {
         }
     },
     'guts': {
-        onModifyStat: (stat, value, self) => (stat === 'attack' && self.status !== 'None' && !self.isSpecial) ? value * 1.5 : value
+        onModifyStat: (stat, value, pokemon) => (stat === 'attack' && pokemon.status !== 'None' && !pokemon.isSpecial) ? value * 1.5 : value
     },
     'toxic-boost': {
-        onModifyStat: (stat, value, self) => (stat === 'attack' && (self.status === 'Poisoned' || self.status === 'Badly Poisoned') && !self.isSpecial) ? value * 1.5 : value
+        onModifyStat: (stat, value, pokemon) => (stat === 'attack' && (pokemon.status === 'Poisoned' || pokemon.status === 'Badly Poisoned') && !pokemon.isSpecial) ? value * 1.5 : value
     },
     'flare-boost': {
-        onModifyStat: (stat, value, self) => (stat === 'special-attack' && self.status === 'Burned' && self.isSpecial) ? value * 1.5 : value
+        onModifyStat: (stat, value, pokemon) => (stat === 'special-attack' && pokemon.status === 'Burned' && pokemon.isSpecial) ? value * 1.5 : value
     },
     'huge-power': {
-        onModifyStat: (stat, value, self) => (stat === 'attack' && !self.isSpecial) ? value * 2 : value
+        onModifyStat: (stat, value, pokemon) => (stat === 'attack' && !pokemon.isSpecial) ? value * 2 : value
     },
     'pure-power': {
-        onModifyStat: (stat, value, self) => (stat === 'attack' && !self.isSpecial) ? value * 2 : value
+        onModifyStat: (stat, value, pokemon) => (stat === 'attack' && !pokemon.isSpecial) ? value * 2 : value
     },
     'strong-jaw': {
-        onModifyMove: (move, self) => { if (BITING_MOVES.has(move.name.toLowerCase())) move.power *= 1.5; }
+        onModifyMove: (move, pokemon) => { if (BITING_MOVES.has(move.name.toLowerCase())) move.power *= 1.5; }
     },
     'mega-launcher': {
-        onModifyMove: (move, self) => { if (AURA_PULSE_MOVES.has(move.name.toLowerCase())) move.power *= 1.5; }
+        onModifyMove: (move, pokemon) => { if (AURA_PULSE_MOVES.has(move.name.toLowerCase())) move.power *= 1.5; }
     },
     'technician': {
-        onModifyMove: (move, self) => { if (move.power <= 60) move.power *= 1.5; }
+        onModifyMove: (move, pokemon) => { if (move.power <= 60) move.power *= 1.5; }
     },
     'iron-fist': {
-        onModifyMove: (move, self) => { if (PUNCHING_MOVES.has(move.name.toLowerCase())) move.power *= 1.2; }
+        onModifyMove: (move, pokemon) => { if (PUNCHING_MOVES.has(move.name.toLowerCase())) move.power *= 1.2; }
     },
     'reckless': {
-        onModifyMove: (move, self) => { if (RECOIL_MOVES.has(move.name.toLowerCase())) move.power *= 1.2; }
+        onModifyMove: (move, pokemon) => { if (RECOIL_MOVES.has(move.name.toLowerCase())) move.power *= 1.2; }
     },
     'sheer-force': {
-        onModifyMove: (move, self) => {
+        onModifyMove: (move, pokemon) => {
             if (move.meta?.ailment?.name !== 'none' || move.stat_changes?.length > 0) {
                 move.power *= 1.3;
                 move.sheerForceBoosted = true; // Flag to prevent secondary effects
@@ -161,8 +153,8 @@ export const abilityEffects = {
         }
     },
     'adaptability': {
-        onModifyDamage: (damageDetails, self, move) => {
-            if (self.types.includes(move.type)) {
+        onModifyDamage: (damageDetails, pokemon, move) => {
+            if (pokemon.types.includes(move.type)) {
                 damageDetails.stabMultiplier = 2;
             }
         }
@@ -203,9 +195,9 @@ export const abilityEffects = {
         }
     },
     'marvel-scale': {
-        onModifyStat: (stat, value, self, attacker) => { // Assume engine passes attacker
+        onModifyStat: (stat, value, pokemon, attacker) => { // Assume engine passes attacker
             if (getEffectiveAbility(attacker)?.toLowerCase() === 'mold breaker') return value;
-            return (stat === 'defense' && self.status?.toLowerCase() !== 'none' && !self.isSpecial) ? value * 1.5 : value
+            return (stat === 'defense' && pokemon.status?.toLowerCase() !== 'none' && !pokemon.isSpecial) ? value * 1.5 : value
         }
     },
     'fur-coat': {
@@ -251,10 +243,10 @@ export const abilityEffects = {
     },
     // --- Aura / Field-wide Abilities ---
     'dark-aura': {
-        onModifyMove: (move, self) => { if (move.type === 'dark') move.power *= 1.33; }
+        onModifyMove: (move, pokemon) => { if (move.type === 'dark') move.power *= 1.33; }
     },
     'fairy-aura': {
-        onModifyMove: (move, self) => { if (move.type === 'fairy') move.power *= 1.33; }
+        onModifyMove: (move, pokemon) => { if (move.type === 'fairy') move.power *= 1.33; }
     },
     'sword-of-ruin': {
         onModifyStat: (stat, value, target, attacker) => (stat === 'defense' && getEffectiveAbility(target)?.toLowerCase() !== 'sword-of-ruin') ? value * 0.75 : value
@@ -271,19 +263,19 @@ export const abilityEffects = {
 
     // --- Post-Action & End-of-Turn Abilities ---
     'speed-boost': {
-        onEndOfTurn: (self, battleState, newLog, applyStatChange) => {
-            if (self.stat_stages.speed < 6) {
-                newLog.push({ type: 'text', text: `${self.name}'s Speed Boost raised its speed!` });
+        onEndOfTurn: (pokemon, battleState, newLog, statChanger) => {
+            if (pokemon.stat_stages.speed < 6) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Speed Boost raised its speed!` });
                 // Use the new helper function
-                applyStatChange(self, 'speed', 1, newLog, battleState);
+                statChanger(pokemon, 'speed', 1, newLog, battleState);
             }
         }
     },
     'moxie': {
-        onAfterKO: (self, target, newLog, applyStatChange, battleState) => { // Add battleState here
-            newLog.push({ type: 'text', text: `${self.name}'s Moxie boosted its Attack!` });
+        onAfterKO: (pokemon, target, newLog, statChanger, battleState) => { // Add battleState here
+            newLog.push({ type: 'text', text: `${pokemon.name}'s Moxie boosted its Attack!` });
             // Use the new helper function
-            applyStatChange(self, 'attack', 1, newLog, battleState);
+            statChanger(pokemon, 'attack', 1, newLog, battleState);
         }
     },
     'magic-guard': {
@@ -291,12 +283,12 @@ export const abilityEffects = {
         // indirect damage from statuses, hazards, or recoil.
     },
     'poison-heal': {
-        onEndOfTurn: (self, battleState, newLog) => {
-            if (self.status === 'Poisoned' || self.status === 'Badly Poisoned') {
-                if (self.currentHp < self.maxHp) {
-                    const healAmount = Math.max(1, Math.floor(self.maxHp / 8));
-                    self.currentHp = Math.min(self.maxHp, self.currentHp + healAmount);
-                    newLog.push({ type: 'text', text: `${self.name} restored health using its Poison Heal!` });
+        onEndOfTurn: (pokemon, battleState, newLog) => {
+            if (pokemon.status === 'Poisoned' || pokemon.status === 'Badly Poisoned') {
+                if (pokemon.currentHp < pokemon.maxHp) {
+                    const healAmount = Math.max(1, Math.floor(pokemon.maxHp / 8));
+                    pokemon.currentHp = Math.min(pokemon.maxHp, pokemon.currentHp + healAmount);
+                    newLog.push({ type: 'text', text: `${pokemon.name} restored health using its Poison Heal!` });
                 }
             }
         }
@@ -304,20 +296,20 @@ export const abilityEffects = {
 
     // --- Contact-Based Abilities ---
     'static': {
-        onDamagedByContact: (self, attacker, newLog) => {
+        onDamagedByContact: (pokemon, attacker, newLog) => {
             if (attacker.status === 'None') {
                 // The DM will control the 30% chance. This hook assumes the chance succeeded.
                 attacker.status = 'Paralyzed';
-                newLog.push({ type: 'text', text: `${self.name}'s Static paralyzed ${attacker.name}!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Static paralyzed ${attacker.name}!` });
             }
         }
     },
     'poison-point': {
-        onDamagedByContact: (self, attacker, newLog) => {
+        onDamagedByContact: (pokemon, attacker, newLog) => {
             if (attacker.status === 'None') {
                 // The DM will control the 30% chance. This hook assumes the chance succeeded.
                 attacker.status = 'Poisoned';
-                newLog.push({ type: 'text', text: `${self.name}'s Poison Point poisoned ${attacker.name}!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Poison Point poisoned ${attacker.name}!` });
             }
         }
     },
@@ -326,15 +318,15 @@ export const abilityEffects = {
     // The engine will call a generic `resolveFormChange` utility, but these hooks
     // define the trigger condition for that utility.
     'disguise': {
-        onTakeDamage: (damage, self, move, battleState, newLog, attackerAbility) => {
+        onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbility) => {
             // Add this check at the beginning
             if (attackerAbility?.toLowerCase() === 'mold breaker') return damage;
 
-            if (!self.transformed && damage > 0) {
-                const bustedForm = self.forms?.find(f => f.formName === 'mimikyu-busted');
+            if (!pokemon.transformed && damage > 0) {
+                const bustedForm = pokemon.forms?.find(f => f.formName === 'mimikyu-busted');
                 if (bustedForm) {
-                    newLog.push({ type: 'text', text: `${self.name}'s Disguise was busted!` });
-                    battleState.formChangeQueue.push({ pokemon: self, form: bustedForm, type: 'RESOLVE' });
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Disguise was busted!` });
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: bustedForm, type: 'RESOLVE' });
                 }
                 return 0; // Negate the damage
             }
@@ -342,45 +334,45 @@ export const abilityEffects = {
         }
     },
     'zen mode': {
-        onTakeDamage: (damage, self, move, battleState, newLog) => {
-            const hpAfterDamage = self.currentHp - damage;
+        onTakeDamage: (damage, pokemon, move, battleState, newLog) => {
+            const hpAfterDamage = pokemon.currentHp - damage;
 
             // Check if HP will drop to 50% or less after this hit.
-            if (!self.transformed && hpAfterDamage > 0 && hpAfterDamage <= self.maxHp / 2) {
+            if (!pokemon.transformed && hpAfterDamage > 0 && hpAfterDamage <= pokemon.maxHp / 2) {
                 // 1. Determine which form to look for based on the Pokémon's name.
-                const isGalarian = self.name.toLowerCase().includes('galar');
+                const isGalarian = pokemon.name.toLowerCase().includes('galar');
                 const targetFormName = isGalarian ? 'darmanitan-galar-zen' : 'darmanitan-zen';
 
                 // 2. Find the form using a robust, case-insensitive search.
-                const zenForm = self.forms?.find(
+                const zenForm = pokemon.forms?.find(
                     f => f.formName?.toLowerCase() === targetFormName.toLowerCase()
                 );
 
                 // 3. If the form is found, add the transformation to the queue.
                 if (zenForm) {
-                    newLog.push({ type: 'text', text: `${self.name}'s Zen Mode was triggered!` });
-                    battleState.formChangeQueue.push({ pokemon: self, form: zenForm, type: 'RESOLVE' });
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Zen Mode was triggered!` });
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: zenForm, type: 'RESOLVE' });
                 }
             }
             return damage;
         },
-        onEndOfTurn: (self, battleState, newLog) => {
+        onEndOfTurn: (pokemon, battleState, newLog) => {
             // This handles reverting the form if HP is restored above 50%.
-            if (self.transformed && self.currentHp > self.maxHp / 2) {
-                battleState.formChangeQueue.push({ pokemon: self, type: 'REVERT' });
+            if (pokemon.transformed && pokemon.currentHp > pokemon.maxHp / 2) {
+                battleState.formChangeQueue.push({ pokemon: pokemon, type: 'REVERT' });
             }
         }
     },
     'ice-face': {
-        onTakeDamage: (damage, self, move, battleState, newLog, attackerAbility) => {
+        onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbility) => {
             // Add this check at the beginning
             if (attackerAbility?.toLowerCase() === 'mold breaker') return damage;
 
-            if (!self.transformed && !move.isSpecial && damage > 0) {
-                const noiceForm = self.forms?.find(f => f.formName === 'eiscue-noice');
+            if (!pokemon.transformed && !move.isSpecial && damage > 0) {
+                const noiceForm = pokemon.forms?.find(f => f.formName === 'eiscue-noice');
                 if (noiceForm) {
-                    newLog.push({ type: 'text', text: `${self.name}'s Ice Face was broken!` });
-                    battleState.formChangeQueue.push({ pokemon: self, form: noiceForm, type: 'RESOLVE' });
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Ice Face was broken!` });
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: noiceForm, type: 'RESOLVE' });
                 }
                 return 0; // Negate the physical damage
             }
@@ -389,44 +381,44 @@ export const abilityEffects = {
         // ... onEndOfTurn logic remains the same
     },
     'stance-change': {
-        onBeforeMove: (self, move, battleState, newLog) => {
+        onBeforeMove: (pokemon, move, battleState, newLog) => {
             const isOffensive = move.damage_class.name !== 'status';
-            if (isOffensive && !self.transformed) {
-                const bladeForm = self.forms?.find(f => f.formName === 'aegislash-blade');
+            if (isOffensive && !pokemon.transformed) {
+                const bladeForm = pokemon.forms?.find(f => f.formName === 'aegislash-blade');
                 if (bladeForm) {
-                    battleState.formChangeQueue.push({ pokemon: self, form: bladeForm, type: 'RESOLVE' });
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: bladeForm, type: 'RESOLVE' });
                 }
-            } else if (!isOffensive && move.name === 'King\'s Shield' && self.transformed) {
-                battleState.formChangeQueue.push({ pokemon: self, type: 'REVERT' });
+            } else if (!isOffensive && move.name === 'King\'s Shield' && pokemon.transformed) {
+                battleState.formChangeQueue.push({ pokemon: pokemon, type: 'REVERT' });
             }
         }
     },
     'schooling': {
-        onSwitchIn: (self, battleState, newLog) => {
-            if (!self.transformed && self.currentHp > self.maxHp / 4) {
-                const schoolForm = self.forms?.find(f => f.formName === 'wishiwashi-school');
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            if (!pokemon.transformed && pokemon.currentHp > pokemon.maxHp / 4) {
+                const schoolForm = pokemon.forms?.find(f => f.formName === 'wishiwashi-school');
                 if (schoolForm) {
-                    battleState.formChangeQueue.push({ pokemon: self, form: schoolForm, type: 'RESOLVE' });
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: schoolForm, type: 'RESOLVE' });
                 }
             }
         },
-        onEndOfTurn: (self, battleState, newLog) => {
-            if (self.transformed && self.currentHp <= self.maxHp / 4) {
-                battleState.formChangeQueue.push({ pokemon: self, type: 'REVERT' });
-            } else if (!self.transformed && self.currentHp > self.maxHp / 4) {
-                const schoolForm = self.forms?.find(f => f.formName === 'wishiwashi-school');
+        onEndOfTurn: (pokemon, battleState, newLog) => {
+            if (pokemon.transformed && pokemon.currentHp <= pokemon.maxHp / 4) {
+                battleState.formChangeQueue.push({ pokemon: pokemon, type: 'REVERT' });
+            } else if (!pokemon.transformed && pokemon.currentHp > pokemon.maxHp / 4) {
+                const schoolForm = pokemon.forms?.find(f => f.formName === 'wishiwashi-school');
                 if (schoolForm) {
-                    battleState.formChangeQueue.push({ pokemon: self, form: schoolForm, type: 'RESOLVE' });
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: schoolForm, type: 'RESOLVE' });
                 }
             }
         }
     },
     'regenerator': {
-        onSwitchOut: (self, battleState, newLog) => {
-            if (self.currentHp < self.maxHp) {
-                const healAmount = Math.floor(self.maxHp / 3);
-                self.currentHp = Math.min(self.maxHp, self.currentHp + healAmount);
-                newLog.push({ type: 'text', text: `${self.name} restored its health as it withdrew!` });
+        onSwitchOut: (pokemon, battleState, newLog) => {
+            if (pokemon.currentHp < pokemon.maxHp) {
+                const healAmount = Math.floor(pokemon.maxHp / 3);
+                pokemon.currentHp = Math.min(pokemon.maxHp, pokemon.currentHp + healAmount);
+                newLog.push({ type: 'text', text: `${pokemon.name} restored its health as it withdrew!` });
             }
         }
     },
@@ -448,17 +440,17 @@ export const abilityEffects = {
         }
     },
     'sturdy': {
-        onTakeDamage: (damage, self, move, battleState, newLog, attackerAbility) => {
+        onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbility) => {
             // Mold Breaker and similar abilities bypass Sturdy
             if (attackerAbility?.toLowerCase() === 'mold breaker') {
                 return damage;
             }
 
             // Check if HP is full and damage is lethal
-            if (self.currentHp === self.maxHp && damage >= self.currentHp) {
-                newLog.push({ type: 'text', text: `${self.name} endured the hit with Sturdy!` });
+            if (pokemon.currentHp === pokemon.maxHp && damage >= pokemon.currentHp) {
+                newLog.push({ type: 'text', text: `${pokemon.name} endured the hit with Sturdy!` });
                 // Return damage that leaves the Pokémon with exactly 1 HP
-                return self.currentHp - 1;
+                return pokemon.currentHp - 1;
             }
 
             // Otherwise, return the original damage
@@ -467,13 +459,13 @@ export const abilityEffects = {
     },
     'contrary': {
         // This hook needs to be created and called by your battle engine
-        onModifyStatStage: (stageChange, self, newLog) => {
+        onModifyStatStage: (stageChange, pokemon, newLog) => {
             // Invert the stage change
             const invertedChange = stageChange * -1;
 
             // Announce the effect
             if (invertedChange !== 0) {
-                newLog.push({ type: 'text', text: `${self.name}'s Contrary inverted the stat change!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Contrary inverted the stat change!` });
             }
 
             return invertedChange;
@@ -486,7 +478,7 @@ export const abilityEffects = {
     },
     'simple': {
         // This is a marker ability. The logic is handled directly
-        // in the applyStatChange function in useBattleEngine.js
+        // in the statChanger function in useBattleEngine.js
         // to keep all stat modifications centralized.
     },
     'wonder-guard': {
@@ -495,13 +487,13 @@ export const abilityEffects = {
         // final type effectiveness calculation.
     },
     'water-absorb': {
-        onCheckImmunity: (move, self, attackerAbility, newLog) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog) => {
             if (move.type === 'water') {
-                newLog.push({ type: 'text', text: `${self.name} absorbed the water! ` });
-                if (self.currentHp < self.maxHp) {
-                    const healAmount = Math.floor(self.maxHp / 4);
-                    self.currentHp = Math.min(self.maxHp, self.currentHp + healAmount);
-                    newLog.push({ type: 'text', text: `${self.name} restored health!` });
+                newLog.push({ type: 'text', text: `${pokemon.name} absorbed the water! ` });
+                if (pokemon.currentHp < pokemon.maxHp) {
+                    const healAmount = Math.floor(pokemon.maxHp / 4);
+                    pokemon.currentHp = Math.min(pokemon.maxHp, pokemon.currentHp + healAmount);
+                    newLog.push({ type: 'text', text: `${pokemon.name} restored health!` });
                 }
                 return true; // Grant immunity
             }
@@ -509,13 +501,13 @@ export const abilityEffects = {
         }
     },
     'volt-absorb': {
-        onCheckImmunity: (move, self, attackerAbility, newLog) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog) => {
             if (move.type === 'electric') {
-                newLog.push({ type: 'text', text: `${self.name} absorbed the electricity! ` });
-                if (self.currentHp < self.maxHp) {
-                    const healAmount = Math.floor(self.maxHp / 4);
-                    self.currentHp = Math.min(self.maxHp, self.currentHp + healAmount);
-                    newLog.push({ type: 'text', text: `${self.name} restored health!` });
+                newLog.push({ type: 'text', text: `${pokemon.name} absorbed the electricity! ` });
+                if (pokemon.currentHp < pokemon.maxHp) {
+                    const healAmount = Math.floor(pokemon.maxHp / 4);
+                    pokemon.currentHp = Math.min(pokemon.maxHp, pokemon.currentHp + healAmount);
+                    newLog.push({ type: 'text', text: `${pokemon.name} restored health!` });
                 }
                 return true; // Grant immunity
             }
@@ -523,17 +515,17 @@ export const abilityEffects = {
         }
     },
     'sap-sipper': {
-        onCheckImmunity: (move, self, attackerAbility, newLog, applyStatChange, battleState) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog, statChanger, battleState) => {
             if (move.type === 'grass') {
-                newLog.push({ type: 'text', text: `${self.name} absorbed the plant energy! ` });
+                newLog.push({ type: 'text', text: `${pokemon.name} absorbed the plant energy! ` });
 
                 // Sap Sipper also raises the user's Attack stat.
-                if (self.stat_stages.attack < 6) {
-                    // We need the engine's applyStatChange function for this.
+                if (pokemon.stat_stages.attack < 6) {
+                    // We need the engine's statChanger function for this.
                     // We'll need to pass it into the hook call.
-                    if (applyStatChange) {
-                        applyStatChange(self, 'attack', 1, newLog, battleState);
-                        newLog.push({ type: 'text', text: `${self.name}'s Attack rose!` });
+                    if (statChanger) {
+                        statChanger(pokemon, 'attack', 1, newLog, battleState);
+                        newLog.push({ type: 'text', text: `${pokemon.name}'s Attack rose!` });
                     }
                 }
                 return true; // Grant immunity
@@ -542,32 +534,32 @@ export const abilityEffects = {
         }
     },
     'protean': {
-        onBeforeMove: (self, move, battleState, newLog) => {
+        onBeforeMove: (pokemon, move, battleState, newLog) => {
             const moveType = move.type;
             // Check if the user is already this type to avoid spamming the log
-            if (self.types.length === 1 && self.types[0] === moveType) {
+            if (pokemon.types.length === 1 && pokemon.types[0] === moveType) {
                 return;
             }
 
             // Change the user's type to the move's type
-            self.types = [moveType];
-            newLog.push({ type: 'text', text: `${self.name}'s Protean changed its type to ${move.type.toUpperCase()}!` });
+            pokemon.types = [moveType];
+            newLog.push({ type: 'text', text: `${pokemon.name}'s Protean changed its type to ${move.type.toUpperCase()}!` });
         }
     },
     'libero': {
         // Libero is functionally identical to Protean
-        onBeforeMove: (self, move, battleState, newLog) => {
+        onBeforeMove: (pokemon, move, battleState, newLog) => {
             const moveType = move.type;
-            if (self.types.length === 1 && self.types[0] === moveType) {
+            if (pokemon.types.length === 1 && pokemon.types[0] === moveType) {
                 return;
             }
 
-            self.types = [moveType];
-            newLog.push({ type: 'text', text: `${self.name}'s Libero changed its type to ${move.type.toUpperCase()}!` });
+            pokemon.types = [moveType];
+            newLog.push({ type: 'text', text: `${pokemon.name}'s Libero changed its type to ${move.type.toUpperCase()}!` });
         }
     },
     'sand-rush': {
-        onModifyStat: (stat, value, self, battleState) => {
+        onModifyStat: (stat, value, pokemon, battleState) => {
             if (stat === 'speed' && battleState.field.weather === 'sandstorm') {
                 return value * 2;
             }
@@ -576,7 +568,7 @@ export const abilityEffects = {
     },
 
     'slush-rush': {
-        onModifyStat: (stat, value, self, battleState) => {
+        onModifyStat: (stat, value, pokemon, battleState) => {
             if (stat === 'speed' && battleState.field.weather === 'snow') {
                 return value * 2;
             }
@@ -584,20 +576,20 @@ export const abilityEffects = {
         }
     },
     'protosynthesis': {
-        onSwitchIn: (self, battleState, newLog, applyStatChange) => {
+        onSwitchIn: (pokemon, battleState, newLog, statChanger) => {
             // Activates in harsh sunlight OR if holding Booster Energy
             const isSunlight = battleState.field.weather === 'sunshine' || battleState.field.weather === 'harsh-sunshine';
-            const holdsBoosterEnergy = self.heldItem?.name.toLowerCase() === 'booster energy';
+            const holdsBoosterEnergy = pokemon.heldItem?.name.toLowerCase() === 'booster energy';
 
-            if (self.boosterApplied) return; // Prevent re-activation
+            if (pokemon.boosterApplied) return; // Prevent re-activation
 
             if (isSunlight || holdsBoosterEnergy) {
                 // Find the highest stat
                 let highestStat = 'attack';
-                let highestValue = self.stats.attack;
+                let highestValue = pokemon.stats.attack;
                 ['defense', 'special-attack', 'special-defense', 'speed'].forEach(stat => {
-                    if (self.stats[stat] > highestValue) {
-                        highestValue = self.stats[stat];
+                    if (pokemon.stats[stat] > highestValue) {
+                        highestValue = pokemon.stats[stat];
                         highestStat = stat;
                     }
                 });
@@ -605,106 +597,106 @@ export const abilityEffects = {
                 // Apply the boost
                 const boostAmount = highestStat === 'speed' ? 1.5 : 1.3;
                 // We'll store the boost directly on the pokemon object for the engine to use.
-                self.boosterBoost = { stat: highestStat, multiplier: boostAmount };
-                self.boosterApplied = true;
-                newLog.push({ type: 'text', text: `${self.name}'s Protosynthesis activated, boosting its ${highestStat.replace('-', ' ')}!` });
+                pokemon.boosterBoost = { stat: highestStat, multiplier: boostAmount };
+                pokemon.boosterApplied = true;
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Protosynthesis activated, boosting its ${highestStat.replace('-', ' ')}!` });
 
                 // Consume Booster Energy if it was the trigger
                 if (holdsBoosterEnergy) {
-                    self.heldItem = null;
+                    pokemon.heldItem = null;
                 }
             }
         }
     },
 
     'quark-drive': {
-        onSwitchIn: (self, battleState, newLog, applyStatChange) => {
+        onSwitchIn: (pokemon, battleState, newLog, statChanger) => {
             // Activates in Electric Terrain OR if holding Booster Energy
             const isElectricTerrain = battleState.field.terrain === 'electric-terrain';
-            const holdsBoosterEnergy = self.heldItem?.name.toLowerCase() === 'booster energy';
+            const holdsBoosterEnergy = pokemon.heldItem?.name.toLowerCase() === 'booster energy';
 
-            if (self.boosterApplied) return;
+            if (pokemon.boosterApplied) return;
 
             if (isElectricTerrain || holdsBoosterEnergy) {
                 // Find the highest stat (same logic as Protosynthesis)
                 let highestStat = 'attack';
-                let highestValue = self.stats.attack;
+                let highestValue = pokemon.stats.attack;
                 ['defense', 'special-attack', 'special-defense', 'speed'].forEach(stat => {
-                    if (self.stats[stat] > highestValue) {
-                        highestValue = self.stats[stat];
+                    if (pokemon.stats[stat] > highestValue) {
+                        highestValue = pokemon.stats[stat];
                         highestStat = stat;
                     }
                 });
 
                 const boostAmount = highestStat === 'speed' ? 1.5 : 1.3;
-                self.boosterBoost = { stat: highestStat, multiplier: boostAmount };
-                self.boosterApplied = true;
-                newLog.push({ type: 'text', text: `${self.name}'s Quark Drive activated, boosting its ${highestStat.replace('-', ' ')}!` });
+                pokemon.boosterBoost = { stat: highestStat, multiplier: boostAmount };
+                pokemon.boosterApplied = true;
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Quark Drive activated, boosting its ${highestStat.replace('-', ' ')}!` });
 
                 if (holdsBoosterEnergy) {
-                    self.heldItem = null;
+                    pokemon.heldItem = null;
                 }
             }
         }
     },
     'defiant': {
-        onStatLowered: (self, battleState, newLog, applyStatChange) => {
+        onStatLowered: (pokemon, battleState, newLog, statChanger) => {
             // Check if Attack is not already maxed out
-            if (self.stat_stages['attack'] < 6) {
-                newLog.push({ type: 'text', text: `${self.name}'s Defiant sharply raised its Attack!` });
+            if (pokemon.stat_stages['attack'] < 6) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Defiant sharply raised its Attack!` });
                 // Sharply raise Attack (+2 stages)
-                applyStatChange(self, 'attack', 2, newLog, battleState);
+                statChanger(pokemon, 'attack', 2, newLog, battleState);
             }
         }
     },
 
     'competitive': {
-        onStatLowered: (self, battleState, newLog, applyStatChange) => {
+        onStatLowered: (pokemon, battleState, newLog, statChanger) => {
             // Check if Special Attack is not already maxed out
-            if (self.stat_stages['special-attack'] < 6) {
-                newLog.push({ type: 'text', text: `${self.name}'s Competitive sharply raised its Sp. Atk!` });
+            if (pokemon.stat_stages['special-attack'] < 6) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Competitive sharply raised its Sp. Atk!` });
                 // Sharply raise Special Attack (+2 stages)
-                applyStatChange(self, 'special-attack', 2, newLog, battleState);
+                statChanger(pokemon, 'special-attack', 2, newLog, battleState);
             }
         }
     },
 
     'justified': {
-        onTakeDamage: (damage, self, move, battleState, newLog, attackerAbility, applyStatChange) => {
+        onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbility, statChanger) => {
             // Activates if hit by a Dark-type move, damage was dealt, and Attack is not maxed out
-            if (move.type === 'dark' && damage > 0 && self.stat_stages['attack'] < 6) {
-                newLog.push({ type: 'text', text: `${self.name}'s Justified raised its Attack!` });
+            if (move.type === 'dark' && damage > 0 && pokemon.stat_stages['attack'] < 6) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Justified raised its Attack!` });
                 // Raise Attack (+1 stage)
-                applyStatChange(self, 'attack', 1, newLog, battleState);
+                statChanger(pokemon, 'attack', 1, newLog, battleState);
             }
             return damage; // Always return the damage
         }
     },
     'flash-fire': {
-        onCheckImmunity: (move, self, attackerAbility, newLog) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog) => {
             if (move.type === 'fire') {
-                newLog.push({ type: 'text', text: `${self.name}'s Flash Fire activated!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Flash Fire activated!` });
                 // Set a flag on the Pokémon object that its fire moves are now boosted.
-                self.flashFireBoosted = true;
+                pokemon.flashFireBoosted = true;
                 return true; // Grant immunity
             }
             return false;
         },
-        onModifyMove: (move, self) => {
+        onModifyMove: (move, pokemon) => {
             // If the boost is active and the move is a Fire-type move, increase its power.
-            if (self.flashFireBoosted && move.type === 'fire') {
+            if (pokemon.flashFireBoosted && move.type === 'fire') {
                 move.power *= 1.5;
             }
         }
     },
 
     'motor-drive': {
-        onCheckImmunity: (move, self, attackerAbility, newLog, applyStatChange, battleState) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog, statChanger, battleState) => {
             if (move.type === 'electric') {
-                newLog.push({ type: 'text', text: `${self.name} absorbed the electricity!` });
-                if (self.stat_stages.speed < 6) {
-                    applyStatChange(self, 'speed', 1, newLog, battleState);
-                    newLog.push({ type: 'text', text: `${self.name}'s Speed rose!` });
+                newLog.push({ type: 'text', text: `${pokemon.name} absorbed the electricity!` });
+                if (pokemon.stat_stages.speed < 6) {
+                    statChanger(pokemon, 'speed', 1, newLog, battleState);
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Speed rose!` });
                 }
                 return true; // Grant immunity
             }
@@ -714,12 +706,12 @@ export const abilityEffects = {
 
     'lightning-rod': {
         onRedirect: (move) => move.type === 'electric',
-        onCheckImmunity: (move, self, attackerAbility, newLog, applyStatChange, battleState) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog, statChanger, battleState) => {
             if (move.type === 'electric') {
-                newLog.push({ type: 'text', text: `The attack was absorbed by ${self.name}!` });
-                if (self.stat_stages['special-attack'] < 6) {
-                    applyStatChange(self, 'special-attack', 1, newLog, battleState);
-                    newLog.push({ type: 'text', text: `${self.name}'s Sp. Atk rose!` });
+                newLog.push({ type: 'text', text: `The attack was absorbed by ${pokemon.name}!` });
+                if (pokemon.stat_stages['special-attack'] < 6) {
+                    statChanger(pokemon, 'special-attack', 1, newLog, battleState);
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Sp. Atk rose!` });
                 }
                 return true; // Grant immunity
             }
@@ -729,12 +721,12 @@ export const abilityEffects = {
 
     'storm-drain': {
         onRedirect: (move) => move.type === 'water',
-        onCheckImmunity: (move, self, attackerAbility, newLog, applyStatChange, battleState) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog, statChanger, battleState) => {
             if (move.type === 'water') {
-                newLog.push({ type: 'text', text: `The attack was absorbed by ${self.name}!` });
-                if (self.stat_stages['special-attack'] < 6) {
-                    applyStatChange(self, 'special-attack', 1, newLog, battleState);
-                    newLog.push({ type: 'text', text: `${self.name}'s Sp. Atk rose!` });
+                newLog.push({ type: 'text', text: `The attack was absorbed by ${pokemon.name}!` });
+                if (pokemon.stat_stages['special-attack'] < 6) {
+                    statChanger(pokemon, 'special-attack', 1, newLog, battleState);
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Sp. Atk rose!` });
                 }
                 return true; // Grant immunity
             }
@@ -742,7 +734,7 @@ export const abilityEffects = {
         }
     },
     'mummy': {
-        onDamagedByContact: (self, attacker, newLog, applyStatChange, battleState) => {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             const unchangeableAbilities = ['multitype', 'stance-change', 'schooling', 'mummy'];
             const attackerAbility = getEffectiveAbility(attacker)?.toLowerCase();
 
@@ -759,27 +751,27 @@ export const abilityEffects = {
     },
 
     'gooey': {
-        onDamagedByContact: (self, attacker, newLog, applyStatChange, battleState) => {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             // Check if Speed can be lowered
             if (attacker.stat_stages['speed'] > -6) {
-                newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${self.name}'s Gooey!` });
+                newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${pokemon.name}'s Gooey!` });
                 // Lower Speed by 1 stage
-                applyStatChange(attacker, 'speed', -1, newLog, battleState);
+                statChanger(attacker, 'speed', -1, newLog, battleState);
             }
         }
     },
 
     // Tangling Hair has the exact same effect as Gooey
     'tangling-hair': {
-        onDamagedByContact: (self, attacker, newLog, applyStatChange, battleState) => {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             if (attacker.stat_stages['speed'] > -6) {
-                newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${self.name}'s Tangling Hair!` });
-                applyStatChange(attacker, 'speed', -1, newLog, battleState);
+                newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${pokemon.name}'s Tangling Hair!` });
+                statChanger(attacker, 'speed', -1, newLog, battleState);
             }
         }
     },
     'tough-claws': {
-        onModifyMove: (move, self) => {
+        onModifyMove: (move, pokemon) => {
             if (CONTACT_MOVES.has(move.name.toLowerCase())) {
                 move.power *= 1.3;
             }
@@ -787,7 +779,7 @@ export const abilityEffects = {
     },
 
     'tinted-lens': {
-        onModifyDamage: (damageDetails, self, move) => {
+        onModifyDamage: (damageDetails, pokemon, move) => {
             // Check if the move is "not very effective"
             if (damageDetails.effectiveness < 1 && damageDetails.effectiveness > 0) {
                 // Double the final damage multiplier
@@ -801,7 +793,7 @@ export const abilityEffects = {
         // in the calculateDamage function in useBattleEngine.js to modify
         // the critical hit multiplier.
     },
-    
+
     'unburden': {
         // This is a "marker" ability. The primary logic is handled directly
         // in the calculateTurnOrderSpeed function in useBattleEngine.js by
@@ -815,59 +807,59 @@ export const abilityEffects = {
     },
 
     'moody': {
-        onEndOfTurn: (self, battleState, newLog, applyStatChange) => {
+        onEndOfTurn: (pokemon, battleState, newLog, statChanger) => {
             const allStats = ['attack', 'defense', 'special-attack', 'special-defense', 'speed', 'accuracy', 'evasion'];
-            
-            const statsToBoost = allStats.filter(stat => self.stat_stages[stat] < 6);
-            const statsToLower = allStats.filter(stat => self.stat_stages[stat] > -6);
+
+            const statsToBoost = allStats.filter(stat => pokemon.stat_stages[stat] < 6);
+            const statsToLower = allStats.filter(stat => pokemon.stat_stages[stat] > -6);
 
             if (statsToBoost.length > 0) {
                 // Pick a random stat to boost
                 const randomBoostStat = statsToBoost[Math.floor(Math.random() * statsToBoost.length)];
-                newLog.push({ type: 'text', text: `${self.name}'s Moody boosted its ${randomBoostStat.replace('-', ' ')}!` });
-                applyStatChange(self, randomBoostStat, 2, newLog, battleState);
-                
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody boosted its ${randomBoostStat.replace('-', ' ')}!` });
+                statChanger(pokemon, randomBoostStat, 2, newLog, battleState);
+
                 // Remove the boosted stat from the potential stats to lower
                 const index = statsToLower.indexOf(randomBoostStat);
                 if (index > -1) {
                     statsToLower.splice(index, 1);
                 }
             }
-            
+
             if (statsToLower.length > 0) {
                 // Pick a random stat to lower
                 const randomLowerStat = statsToLower[Math.floor(Math.random() * statsToLower.length)];
-                newLog.push({ type: 'text', text: `${self.name}'s Moody lowered its ${randomLowerStat.replace('-', ' ')}!` });
-                applyStatChange(self, randomLowerStat, -1, newLog, battleState);
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody lowered its ${randomLowerStat.replace('-', ' ')}!` });
+                statChanger(pokemon, randomLowerStat, -1, newLog, battleState);
             }
         }
     },
     'imposter': {
-        onSwitchIn: (self, battleState, newLog, applyStatChange, handleTransform) => {
-            // Find self's team and slot index
-            const selfTeamIndex = battleState.teams.findIndex(t => t.pokemon.some(p => p.id === self.id));
-            if (selfTeamIndex === -1) return;
-            const selfTeamId = battleState.teams[selfTeamIndex].id;
-            const selfSlotIndex = battleState.activePokemonIndices[selfTeamId].findIndex(i => battleState.teams[selfTeamIndex].pokemon[i]?.id === self.id);
+        onSwitchIn: (pokemon, battleState, newLog, statChanger, handleTransform) => {
+            // Find pokemon's team and slot index
+            const pokemonTeamIndex = battleState.teams.findIndex(t => t.pokemon.some(p => p.id === pokemon.id));
+            if (pokemonTeamIndex === -1) return;
+            const pokemonTeamId = battleState.teams[pokemonTeamIndex].id;
+            const pokemonSlotIndex = battleState.activePokemonIndices[pokemonTeamId].findIndex(i => battleState.teams[pokemonTeamIndex].pokemon[i]?.id === pokemon.id);
 
             // Find the opponent in the corresponding slot
-            const opponentTeamIndex = selfTeamIndex === 0 ? 1 : 0;
+            const opponentTeamIndex = pokemonTeamIndex === 0 ? 1 : 0;
             const opponentTeamId = battleState.teams[opponentTeamIndex].id;
-            const opponentGlobalIndex = battleState.activePokemonIndices[opponentTeamId][selfSlotIndex];
+            const opponentGlobalIndex = battleState.activePokemonIndices[opponentTeamId][pokemonSlotIndex];
             const opponent = battleState.teams[opponentTeamIndex].pokemon[opponentGlobalIndex];
 
             // If a valid opponent exists, transform into it
             if (opponent && !opponent.fainted) {
-                handleTransform(self, opponent, newLog);
+                handleTransform(pokemon, opponent, newLog);
             } else {
-                newLog.push({ type: 'text', text: `${self.name} has no one to transform into!` });
+                newLog.push({ type: 'text', text: `${pokemon.name} has no one to transform into!` });
             }
         }
     },
     'soundproof': {
-        onCheckImmunity: (move, self, attackerAbility, newLog) => {
+        onCheckImmunity: (move, pokemon, attackerAbility, newLog) => {
             if (SOUND_MOVES.has(move.name.toLowerCase())) {
-                newLog.push({ type: 'text', text: `${self.name}'s Soundproof blocks the move!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Soundproof blocks the move!` });
                 return true; // Grant immunity
             }
             return false;
@@ -883,7 +875,7 @@ export const abilityEffects = {
     },
 
     'aerilate': {
-        onBeforeMove: (self, move, battleState, newLog) => {
+        onBeforeMove: (pokemon, move, battleState, newLog) => {
             if (move.type === 'normal' && move.damage_class !== 'status') {
                 move.type = 'flying';
                 move.power *= 1.2;
@@ -892,7 +884,7 @@ export const abilityEffects = {
         }
     },
     'pixilate': {
-        onBeforeMove: (self, move, battleState, newLog) => {
+        onBeforeMove: (pokemon, move, battleState, newLog) => {
             if (move.type === 'normal' && move.damage_class !== 'status') {
                 move.type = 'fairy';
                 move.power *= 1.2;
@@ -901,7 +893,7 @@ export const abilityEffects = {
         }
     },
     'refrigerate': {
-        onBeforeMove: (self, move, battleState, newLog) => {
+        onBeforeMove: (pokemon, move, battleState, newLog) => {
             if (move.type === 'normal' && move.damage_class !== 'status') {
                 move.type = 'ice';
                 move.power *= 1.2;
@@ -910,7 +902,7 @@ export const abilityEffects = {
         }
     },
     'galvanize': {
-        onBeforeMove: (self, move, battleState, newLog) => {
+        onBeforeMove: (pokemon, move, battleState, newLog) => {
             if (move.type === 'normal' && move.damage_class !== 'status') {
                 move.type = 'electric';
                 move.power *= 1.2;
@@ -919,38 +911,38 @@ export const abilityEffects = {
         }
     },
     'harvest': {
-        onEndOfTurn: (self, battleState, newLog) => {
+        onEndOfTurn: (pokemon, battleState, newLog) => {
             // Check if a berry was consumed and the Pokémon is holding nothing
-            if (self.lastConsumedItem && !self.heldItem && self.lastConsumedItem.name.includes('berry')) {
+            if (pokemon.lastConsumedItem && !pokemon.heldItem && pokemon.lastConsumedItem.name.includes('berry')) {
                 const weather = battleState.field.weather;
                 const chance = (weather === 'sunshine' || weather === 'harsh-sunshine') ? 100 : 50;
-                
+
                 // Prompt the DM to make a roll. Do not restore the item automatically.
-                newLog.push({ 
-                    type: 'text', 
-                    text: `${self.name}'s Harvest might restore its ${self.lastConsumedItem.name}! (DM: ${chance}% chance)` 
+                newLog.push({
+                    type: 'text',
+                    text: `${pokemon.name}'s Harvest might restore its ${pokemon.lastConsumedItem.name}! (DM: ${chance}% chance)`
                 });
-                
+
                 // Clear the consumed item slot so this doesn't trigger every turn.
                 // If the DM's roll succeeds, they will manually give the item back.
-                self.lastConsumedItem = null;
+                pokemon.lastConsumedItem = null;
             }
         }
     },
     'analytic': {
-        onModifyMove: (move, self, battleState) => {
+        onModifyMove: (move, pokemon, battleState) => {
             // Find the last Pokémon ID scheduled to move
             const lastToMoveId = battleState.turnOrder?.[battleState.turnOrder.length - 1];
             // If the user of this move is the last to move, boost power
-            if (self.id === lastToMoveId) {
+            if (pokemon.id === lastToMoveId) {
                 move.power *= 1.3;
             }
         }
     },
 
     'download': {
-        onSwitchIn: (self, battleState, newLog, applyStatChange) => {
-            const opponents = getActiveOpponents(self, battleState);
+        onSwitchIn: (pokemon, battleState, newLog, statChanger) => {
+            const opponents = getActiveOpponents(pokemon, battleState);
             if (opponents.length === 0) return;
 
             // Sum the defenses of all active opponents
@@ -960,14 +952,14 @@ export const abilityEffects = {
                 totalDef += calculateStat(opp.stats.defense, opp.level) * getStatModifier(opp.stat_stages.defense);
                 totalSpDef += calculateStat(opp.stats['special-defense'], opp.level) * getStatModifier(opp.stat_stages['special-defense']);
             });
-            
+
             // Raise the corresponding attacking stat
             if (totalDef < totalSpDef) {
-                newLog.push({ type: 'text', text: `${self.name}'s Download raised its Attack!` });
-                applyStatChange(self, 'attack', 1, newLog, battleState);
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Download raised its Attack!` });
+                statChanger(pokemon, 'attack', 1, newLog, battleState);
             } else {
-                newLog.push({ type: 'text', text: `${self.name}'s Download raised its Sp. Atk!` });
-                applyStatChange(self, 'special-attack', 1, newLog, battleState);
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Download raised its Sp. Atk!` });
+                statChanger(pokemon, 'special-attack', 1, newLog, battleState);
             }
         }
     },
@@ -993,13 +985,13 @@ export const abilityEffects = {
         // This is a "marker ability". Its logic is handled directly in the engine
         // before end-of-turn item effects are processed.
     },
-    
+
     // --- Also, a required update to existing weather abilities for Utility Umbrella ---
     'swift-swim': {
-        onModifyStat: (stat, value, self, battleState) => {
+        onModifyStat: (stat, value, pokemon, battleState) => {
             if (stat === 'speed' && (battleState.field.weather === 'rain' || battleState.field.weather === 'heavy-rain')) {
                 // Add a check for Utility Umbrella
-                if (self.heldItem?.name.toLowerCase() === 'utility-umbrella') return value;
+                if (pokemon.heldItem?.name.toLowerCase() === 'utility-umbrella') return value;
                 return value * 2;
             }
             return value;
@@ -1007,10 +999,10 @@ export const abilityEffects = {
     },
 
     'chlorophyll': {
-        onModifyStat: (stat, value, self, battleState) => {
+        onModifyStat: (stat, value, pokemon, battleState) => {
             if (stat === 'speed' && (battleState.field.weather === 'sunshine' || battleState.field.weather === 'harsh-sunshine')) {
                 // Add a check for Utility Umbrella
-                if (self.heldItem?.name.toLowerCase() === 'utility-umbrella') return value;
+                if (pokemon.heldItem?.name.toLowerCase() === 'utility-umbrella') return value;
                 return value * 2;
             }
             return value;

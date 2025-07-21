@@ -23,7 +23,7 @@ const CustomAbilityCreator = () => {
     const handleSaveCustomAbility = async (abilityData) => {
         dispatch({ type: 'SET_LOADING', payload: 'Saving Custom Ability...' });
         try {
-            const collectionPath = `campaigns/${state.selectedCampaignId}/custom-abilities`;
+            const collectionPath = `campaigns/${state.selectedCampaignId }/custom-abilities`;
             if (abilityData.id) {
                 const docRef = doc(db, collectionPath, abilityData.id);
                 await updateDoc(docRef, abilityData);
@@ -44,7 +44,7 @@ const CustomAbilityCreator = () => {
         }
         dispatch({ type: 'SET_LOADING', payload: 'Deleting...' });
         try {
-            const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-abilities`, abilityId);
+            const docRef = doc(db, `campaigns/${state.selectedCampaignId }/custom-abilities`, abilityId);
             await deleteDoc(docRef);
         } catch (error) {
             dispatch({ type: 'SET_ERROR', payload: `Failed to delete custom ability: ${error.message}` });

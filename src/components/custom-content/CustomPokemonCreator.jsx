@@ -52,7 +52,7 @@ const handleSaveCustomPokemon = async (pokemonData) => {
     try {
         const docId = pokemonData.id || pokemonData.name.toLowerCase().replace(/\s/g, '-');
         // This now points to the campaign-specific subcollection
-        const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-pokemon`, docId);
+        const docRef = doc(db, `campaigns/${state.selectedCampaignId }/custom-pokemon`, docId);
         await setDoc(docRef, { ...pokemonData, id: docId });
     } catch (error) {
         dispatch({ type: 'SET_ERROR', payload: `Failed to save custom Pokémon: ${error.message}` });
@@ -69,7 +69,7 @@ const handleDeleteCustomPokemon = async (pokemonId) => {
     dispatch({ type: 'SET_LOADING', payload: 'Deleting...' });
     try {
         // This now points to the campaign-specific subcollection
-        const docRef = doc(db, `campaigns/${state.selectedCampaignId}/custom-pokemon`, pokemonId);
+        const docRef = doc(db, `campaigns/${state.selectedCampaignId }/custom-pokemon`, pokemonId);
         await deleteDoc(docRef);
     } catch (error) {
         dispatch({ type: 'SET_ERROR', payload: `Failed to delete custom Pokémon: ${error.message}` });

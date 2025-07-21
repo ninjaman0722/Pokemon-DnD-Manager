@@ -24,8 +24,17 @@ class ErrorBoundary extends React.Component {
                         <pre className="text-left bg-gray-800 p-2 rounded text-xs overflow-auto mb-4">
                             {this.state.error?.toString()}
                         </pre>
-                        <button onClick={() => this.setState({ hasError: false, error: null })} className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded">
+                        <button
+                            onClick={() => this.setState({ hasError: false, error: null })}
+                            className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded"
+                        >
                             Try to Recover
+                        </button>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                        >
+                            Reload Page
                         </button>
                     </div>
                 </div>
