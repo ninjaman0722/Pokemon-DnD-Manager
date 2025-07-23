@@ -1,8 +1,7 @@
 import { TYPE_CHART } from '../../config/gameData';
 import { abilityEffects } from '../../config/abilityEffects';
-import * as itemEffectsManager from '../../config/itemEffects';
-const { itemEffects } = itemEffectsManager;
-import { getEffectiveAbility, getStatModifier } from './battleUtils';
+import { itemEffects } from '../../config/itemEffects';
+import { getEffectiveAbility, getStatModifier, isGrounded, normalizeItemName } from './battleUtils';
 import { calculateStatChange } from './stateModifiers';
 
 
@@ -20,16 +19,21 @@ export const getZMovePower = (basePower) => {
 };
 
 export const calculateDamage = (attacker, defender, move, isCritical, currentBattleState, newLog) => {
-    if (attacker.name.toLowerCase().includes('clefable')) {
-        console.log(`--- ENTERING DAMAGE CALC ---`);
-        console.log(`Attacker: ${attacker.name}`);
-        console.log(`Held Item: ${JSON.stringify(attacker.heldItem)}`);
-        console.log(`--------------------------`);
-    }
+
     const attackerAbility = getEffectiveAbility(attacker, currentBattleState)?.toLowerCase();
     const defenderAbility = getEffectiveAbility(defender, currentBattleState)?.toLowerCase();
     const isSpecial = move.damage_class.name === 'special';
     const moveForCalc = { ...move, isSpecial };
+    const moveNameLower = moveForCalc.name.toLowerCase();
+
+    if (moveNameLower === 'facade' && attacker.status && attacker.status !== 'None') {
+        moveForCalc.power *= 2;
+    }
+
+    // Acrobatics doubles power if the user has no held item
+    if (moveNameLower === 'acrobatics' && !attacker.heldItem) {
+        moveForCalc.power *= 2;
+    }
 
     const statChanger = (target, stat, change) => {
         const { updatedTarget, newLog: statLog } = calculateStatChange(target, stat, change, currentBattleState);
@@ -62,6 +66,37 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
             });
         }
     }
+    const weather = currentBattleState.field.weather;
+    const terrain = currentBattleState.field.terrain;
+    const attackerIsGrounded = isGrounded(attacker, currentBattleState);
+
+    // Apply Weather effects (and check for Utility Umbrella)
+    if (attacker.heldItem?.name.toLowerCase() !== 'utility-umbrella') {
+        if (weather === 'sunshine' || weather === 'harsh-sunshine') {
+            if (move.type === 'fire') details.finalMultiplier *= 1.5;
+            if (move.type === 'water') details.finalMultiplier *= 0.5;
+        } else if (weather === 'rain' || weather === 'heavy-rain') {
+            if (move.type === 'water') details.finalMultiplier *= 1.5;
+            if (move.type === 'fire') details.finalMultiplier *= 0.5;
+        }
+    }
+
+    // Apply Terrain effects
+    if (attackerIsGrounded) {
+        if (terrain === 'electric-terrain' && move.type === 'electric') {
+            details.finalMultiplier *= 1.3;
+        } else if (terrain === 'grassy-terrain' && move.type === 'grass') {
+            details.finalMultiplier *= 1.3;
+        } else if (terrain === 'psychic-terrain' && move.type === 'psychic') {
+            details.finalMultiplier *= 1.3;
+        }
+    }
+
+    // Defensive terrain effects (apply to opponent)
+    if (isGrounded(defender, currentBattleState) && terrain === 'misty-terrain' && move.type === 'dragon') {
+        details.finalMultiplier *= 0.5;
+    }
+    if (abilityEffects[attackerAbility]?.onModifyDamage) abilityEffects[attackerAbility].onModifyDamage(details, attacker, move);
     // Wonder Guard ability check
     if (defenderAbility === 'wonder-guard' && initialEffectiveness <= 1) {
         newLog.push({ type: 'text', text: `${defender.name}'s Wonder Guard protected it!` });
@@ -129,51 +164,44 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
     if (abilityEffects[attackerAbility]?.onModifyMove) abilityEffects[attackerAbility].onModifyMove(moveForCalc, attacker);
     if (abilityEffects[attackerAbility]?.onModifyStat) details.attack = abilityEffects[attackerAbility].onModifyStat(attackStageKey, details.attack, attacker);
     if (abilityEffects[defenderAbility]?.onModifyStat) details.defense = abilityEffects[defenderAbility].onModifyStat(defenseStageKey, details.defense, defender, attacker);
-    if (attacker.status?.toLowerCase() === 'burned' && !isSpecial && attackerAbility !== 'guts') details.attack /= 2;
     if (isCritical && !abilityEffects[defenderAbility]?.onCritImmunity?.(defender, move, attackerAbility)) details.critMultiplier = (attackerAbility === 'sniper') ? 2.25 : 1.5;
 
     // Item-based modifications (skipped if Magic Room is active)
-    if (currentBattleState.field.magicRoomTurns === 0) {
-        // --- Attacker's Item Check ---
-        if (!attacker.volatileStatuses.includes('Embargo')) {
-            const attackerItem = attacker.heldItem?.name.toLowerCase();
-            if (attacker.name === 'Clefable') {
-                console.log('--- FINAL STATE INSPECTION ---');
-                console.log('Checking itemEffects object right before use...');
-                console.log('Is itemEffects an object?', typeof itemEffects === 'object' && itemEffects !== null);
-                try {
-                    console.log('All keys found in itemEffects:', Object.keys(itemEffects));
-                    console.log('Value of itemEffects["life-orb"]:', itemEffects['life-orb']);
-                    console.log('Type of onModifyDamage hook:', typeof itemEffects['life-orb']?.onModifyDamage);
-                } catch (e) {
-                    console.log('An error occurred while inspecting itemEffects:', e.message);
-                }
-                console.log('--- END FINAL STATE INSPECTION ---');
+    if (currentBattleState.field.magicRoomTurns == 0) {
+        const attackerItemName = attacker.heldItem ? normalizeItemName(attacker.heldItem.name) : '';
+        const defenderItemName = defender.heldItem ? normalizeItemName(defender.heldItem.name) : '';
+
+        if (!attacker.volatileStatuses.includes('embargo')) {
+            const attackerItem = itemEffects[attackerItemName];
+
+            if (attackerItem?.onModifyMove) {
+                // This will call the specific hook for items like Muscle Band
+                attackerItem.onModifyMove(details, attacker);
             }
-            if (itemEffects[attackerItem]?.onModifyMove) {
-                itemEffects[attackerItem].onModifyMove(details, attacker);
+
+            // --- NEW: Generic Type-Enhancing Item Check ---
+            // This checks if the held item exists in the TYPE_ENHANCING_ITEMS map
+            // If so, it calls the generic 'type-enhancing' hook you defined in itemEffects.js
+            if (TYPE_ENHANCING_ITEMS[attacker.heldItem?.name.toLowerCase()]) {
+                itemEffects['type-enhancing']?.onModifyMove(details, attacker);
             }
-            if (itemEffects[attackerItem]?.onModifyStat) {
-                details.attack = itemEffects[attackerItem].onModifyStat(attackStageKey, details.attack, attacker);
+            // --- END NEW BLOCK ---
+
+            if (attackerItem?.onModifyStat) {
+                details.attack = attackerItem.onModifyStat(attackStageKey, details.attack, attacker);
             }
-            if (itemEffects[attackerItem]?.onModifyDamage) {
-                itemEffects[attackerItem].onModifyDamage(details, attacker, moveForCalc);
+            if (attackerItem?.onModifyDamage) {
+                attackerItem.onModifyDamage(details, attacker, moveForCalc);
             }
-            console.log('AFTER item modification, finalMultiplier is:', details.finalMultiplier);
         }
 
-        // --- Defender's Item Check ---
-        if (!defender.volatileStatuses.includes('Embargo')) {
-            const defenderItem = defender.heldItem?.name.toLowerCase();
-            if (itemEffects[defenderItem]?.onModifyStat) {
-                details.defense = itemEffects[defenderItem].onModifyStat(defenseStageKey, details.defense, defender);
+        // Apply defender item effects if not under embargo
+        if (!defender.volatileStatuses.includes('embargo')) {
+            if (itemEffects[defenderItemName]?.onModifyStat) {
+                details.defense = itemEffects[defenderItemName].onModifyStat(defenseStageKey, details.defense, defender);
             }
-            if (itemEffects[defenderItem]?.onModifyDamage) {
-                itemEffects[defenderItem].onModifyDamage(details, defender, moveForCalc);
-            }
-            // This check for super-effective berries is also a defender item effect
-            if (itemEffects['super-effective-berry']?.onModifyDamage) {
-                itemEffects['super-effective-berry'].onModifyDamage(details, defender, moveForCalc);
+            if (itemEffects[defenderItemName]?.onModifyDamage && moveForCalc.isSuperEffective) {
+                itemEffects[defenderItemName].onModifyDamage(details, defender, moveForCalc);
             }
         }
     }
@@ -181,13 +209,11 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
     details.finalMultiplier *= details.stabMultiplier;
     details.finalMultiplier *= details.critMultiplier;
     details.finalMultiplier *= details.effectiveness;
-
     // Final ability-based damage modifications
     if (abilityEffects[attackerAbility]?.onModifyDamage) abilityEffects[attackerAbility].onModifyDamage(details, attacker, move);
     if (abilityEffects[defenderAbility]?.onModifyDamage) abilityEffects[defenderAbility].onModifyDamage(details, defender, move, attackerAbility);
 
-    let baseDamage = Math.floor(((((2 * attacker.level / 5 + 2) * details.power * (details.attack / details.defense)) / 50) + 2));
-    console.log('Final combined multiplier is:', details.finalMultiplier);
+    let baseDamage = Math.floor(((2 * attacker.level / 5 + 2) * moveForCalc.power * (details.attack / details.defense)) / 50) + 2;
     let finalDamage = Math.floor(baseDamage * details.finalMultiplier);
 
     return { damage: Math.max(1, finalDamage), effectiveness: details.effectiveness, berryTriggered: details.berryTriggered, breakdown: details };

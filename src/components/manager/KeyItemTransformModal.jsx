@@ -10,7 +10,7 @@ const KeyItemTransformModal = ({ trainer, onTransform, onClose }) => {
 
     const availableItems = Object.keys(KEY_ITEM_RECIPES).filter(item => 
         Object.values(trainer.bag || {}).some(bagItem => 
-            bagItem.name.toLowerCase().replace(/\s/g, '-') === item.toLowerCase().replace(/\s/g, '-')
+            bagItem.name.toLowerCase() === item.toLowerCase()
         )
     );
 

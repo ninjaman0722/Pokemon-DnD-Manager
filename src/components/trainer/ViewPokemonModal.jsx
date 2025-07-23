@@ -34,7 +34,7 @@ const ViewPokemonModal = ({ pokemon, onClose }) => {
                     <div className="flex-grow space-y-3">
                         <div>
                             <h4 className="font-semibold text-indigo-300">Ability</h4>
-                            <p className="capitalize">{pokemon.ability?.replace(/-/g, ' ')}</p>
+                            <p className="capitalize">{pokemon.ability}</p>
                         </div>
                         <div>
                             <h4 className="font-semibold text-indigo-300">Held Item</h4>

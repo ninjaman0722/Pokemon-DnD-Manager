@@ -6,7 +6,7 @@ describe('DEBUGGING TEST for damageCalculator', () => {
 
         const mockAttacker = { name: 'Debug Attacker', heldItem: { name: 'life-orb' }, volatileStatuses: [], types: ['normal'], stats: {}, stat_stages: {} };
         const mockDefender = { name: 'Debug Defender', types: ['normal'], volatileStatuses: [], stats: {}, stat_stages: {} };
-        const mockMove = { power: 50, type: 'normal', damage_class: { name: 'physical' } };
+        const mockMove = { name: 'Tackle', power: 50, type: 'normal', damage_class: { name: 'physical' } };
         const mockState = { field: {} };
         const mockLog = [];
 

@@ -2,13 +2,14 @@ import { TYPE_CHART } from '../../config/gameData';
 import { abilityEffects } from '../../config/abilityEffects';
 import { getEffectiveAbility, isGrounded } from './battleUtils';
 import { calculateStatChange, handleTransform } from './stateModifiers';
+import { itemEffects } from '../../config/itemEffects';
+import { getActiveOpponents } from './battleUtils';
 
 export const runOnSwitchIn = (pokemonArray, currentBattleState, newLog) => {
     pokemonArray.forEach(pokemon => {
         if (!pokemon || pokemon.fainted) return;
 
         // --- REFACTORED: ABILITY & ITEM HOOKS ---
-        const abilityName = getEffectiveAbility(pokemon, currentBattleState)?.toLowerCase();
         const statChanger = (target, stat, change) => {
             const { updatedTarget, newLog: statLog } = calculateStatChange(target, stat, change, currentBattleState);
             Object.assign(target, updatedTarget);
@@ -54,7 +55,9 @@ export const runOnSwitchIn = (pokemonArray, currentBattleState, newLog) => {
 
         // Check for Spikes, Toxic Spikes, Sticky Web
         const grounded = isGrounded(pokemon, currentBattleState);
-        if (grounded && !hasBoots) { // The boots check now protects from all grounded hazards
+        const abilityName = getEffectiveAbility(pokemon, currentBattleState)?.toLowerCase();
+        const isImmuneToGroundFromAbility = abilityEffects[abilityName]?.onCheckImmunity?.({ type: 'ground' }, pokemon);
+        if (grounded && !isImmuneToGroundFromAbility && !hasBoots) {
 
             // Spikes Logic (already present)
             if (!isGuarded && teamHazards['spikes']) {

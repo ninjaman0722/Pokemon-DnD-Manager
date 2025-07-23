@@ -187,7 +187,7 @@ const CustomPokemonModal = ({ pokemonToEdit, onSave, onClose }) => {
                     <label className="mb-2 block">Learnable Moves</label>
                     <div className="flex gap-2 mb-2"><AutocompleteInput value={newMove} onChange={setNewMove} onSelect={handleAddMove} placeholder="Search for a move to add..." sourceList={moveList} /> <button onClick={() => handleAddMove(newMove)} className="bg-indigo-600 hover:bg-indigo-700 px-4 rounded-md font-semibold">Add</button></div>
                     <ul className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-900/50 p-2 rounded-md min-h-[50px] max-h-48 overflow-y-auto">
-                        {(pokemon.allMoveNames || []).map(move => (<li key={move} className="flex justify-between items-center bg-gray-700 px-2 py-1 rounded-md text-sm"><span className="capitalize truncate">{move.replace(/-/g, ' ')}</span><button onClick={() => handleRemoveMove(move)} className="text-red-400 font-bold">✕</button></li>))}
+                        {(pokemon.allMoveNames || []).map(move => (<li key={move} className="flex justify-between items-center bg-gray-700 px-2 py-1 rounded-md text-sm"><span className="capitalize truncate">{move}</span><button onClick={() => handleRemoveMove(move)} className="text-red-400 font-bold">✕</button></li>))}
                     </ul>
                 </div>
 

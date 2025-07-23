@@ -172,14 +172,14 @@ const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWi
                         <div className="col-span-2">
                             <label className="block text-sm font-medium text-gray-400">Ability</label>
                             <select value={editedPokemon.ability} onChange={(e) => handleFieldChange('ability', e.target.value)} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600 capitalize">
-                                {editedPokemon.abilities?.map(ab => <option key={ab.name} value={ab.name.replace(/-/g, ' ')}>{ab.name.replace(/-/g, ' ')}</option>)}
+                                {editedPokemon.abilities?.map(ab => <option key={ab.name} value={ab.name}>{ab.name}</option>)}
                             </select>
                         </div>
 
                         <div className="col-span-2">
                             <label className="block text-sm font-medium text-gray-400">Pokéball</label>
                             <select value={editedPokemon.pokeball} onChange={(e) => handleFieldChange('pokeball', e.target.value)} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600 capitalize">
-                                {POKEBALLS.map(b => <option key={b.name} value={b.name}>{b.name.replace(/-/g, ' ')}</option>)}
+                                {POKEBALLS.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
                             </select>
                         </div>
 

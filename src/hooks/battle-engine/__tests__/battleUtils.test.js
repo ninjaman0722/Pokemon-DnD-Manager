@@ -1,44 +1,49 @@
+// battleUtils.test.js
+
 import { getEffectiveAbility, isGrounded } from '../battleUtils';
+// --- FIX: Import the test state factory ---
+import { createPokemon, createBattleState } from '../__helpers__/TestStateFactory';
 
 describe('battleUtils', () => {
     describe('getEffectiveAbility', () => {
         it('should return null if another pokemon has Neutralizing Gas', () => {
-            const pokemonWithAbility = { id: 'p1', ability: 'Intimidate', volatileStatuses: [] };
-            const gasUser = { id: 'p2', ability: 'Neutralizing-Gas', fainted: false, volatileStatuses: [] };
-            
-            // CORRECTED BATTLE STATE STRUCTURE
-            const battleState = {
-                teams: [
-                    { id: 'players', pokemon: [pokemonWithAbility] },
-                    { id: 'opponent', pokemon: [gasUser] }
-                ]
-            };
-            
+            // ARRANGE: Use the factory to create realistic test objects
+            const pokemonWithAbility = createPokemon('Corviknight', { ability: 'Pressure' });
+            const gasUser = createPokemon('Weezing', { ability: 'Neutralizing-Gas' });
+            const battleState = createBattleState([pokemonWithAbility], [gasUser]);
+
+            // ACT
             const effectiveAbility = getEffectiveAbility(pokemonWithAbility, battleState);
+            
+            // ASSERT
             expect(effectiveAbility).toBeNull();
         });
 
         it('should return the ability if Neutralizing Gas user is the pokemon itself', () => {
-            // Add volatileStatuses to the mock object
-            const gasUser = { id: 'p2', ability: 'Neutralizing-Gas', fainted: false, volatileStatuses: [] };
-            const battleState = { teams: [[], [{ pokemon: [gasUser] }]] };
-
+            // ARRANGE: Use the factory to ensure a correctly structured state
+            const gasUser = createPokemon('Weezing', { id: 'p2', ability: 'Neutralizing-Gas' });
+            const otherPokemon = createPokemon('Pikachu');
+            // --- FIX: Use createBattleState for a valid structure ---
+            const battleState = createBattleState([gasUser], [otherPokemon]);
+            
+            // ACT
             const effectiveAbility = getEffectiveAbility(gasUser, battleState);
+            
+            // ASSERT
             expect(effectiveAbility).toBe('Neutralizing-Gas');
         });
     });
 
-    // ... isGrounded tests remain the same ...
     describe('isGrounded', () => {
         it('should return false for a Flying-type pokemon', () => {
-            const flyingPokemon = { types: ['flying'] };
-            const battleState = { field: { gravityTurns: 0 } };
+            const flyingPokemon = createPokemon('Corviknight', { types: ['flying', 'steel'] });
+            const battleState = createBattleState([flyingPokemon], []);
             expect(isGrounded(flyingPokemon, battleState)).toBe(false);
         });
 
         it('should return true for a Flying-type pokemon if Gravity is active', () => {
-            const flyingPokemon = { types: ['flying'] };
-            const battleState = { field: { gravityTurns: 1 } };
+            const flyingPokemon = createPokemon('Corviknight', { types: ['flying', 'steel'] });
+            const battleState = createBattleState([flyingPokemon], [], { gravityTurns: 1 });
             expect(isGrounded(flyingPokemon, battleState)).toBe(true);
         });
     });

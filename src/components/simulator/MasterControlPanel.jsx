@@ -90,7 +90,7 @@ const MasterControlPanel = ({
                     <div>
                         <label className="block text-xs font-medium text-gray-400">Weather</label>
                         <select value={field.weather} onChange={(e) => handleFieldUpdate('weather', e.target.value)} className="w-full bg-gray-700 p-1 rounded-md capitalize">
-                            {WEATHER_TYPES.map(w => <option key={w} value={w}>{w.replace(/-/g, ' ')}</option>)}
+                            {WEATHER_TYPES.map(w => <option key={w} value={w}>{w}</option>)}
                         </select>
                     </div>
                     <div>
@@ -100,7 +100,7 @@ const MasterControlPanel = ({
                     <div>
                         <label className="block text-xs font-medium text-gray-400">Terrain</label>
                         <select value={field.terrain} onChange={(e) => handleFieldUpdate('terrain', e.target.value)} className="w-full bg-gray-700 p-1 rounded-md capitalize">
-                            {TERRAIN_TYPES.map(t => <option key={t} value={t}>{t.replace(/-/g, ' ')}</option>)}
+                            {TERRAIN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                     </div>
                     <div>

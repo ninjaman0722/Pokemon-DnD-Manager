@@ -80,7 +80,7 @@ const PokemonStatEditorModal = ({ pokemon, onSave, onClose }) => {
                     <div className="grid grid-cols-3 gap-2">
                         {Object.keys(editedPokemon.stat_stages).map(stat => (
                             <div key={stat}>
-                                <label className="block text-xs font-medium text-gray-400 capitalize">{stat.replace('-', ' ')}</label>
+                                <label className="block text-xs font-medium text-gray-400 capitalize">{stat}</label>
                                 <input type="number" value={editedPokemon.stat_stages[stat]} onChange={(e) => handleStatChange(stat, e.target.value)} min="-6" max="6" className="w-full bg-gray-900 p-2 rounded-md border border-gray-600 text-center" />
                             </div>
                         ))}

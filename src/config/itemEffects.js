@@ -108,15 +108,13 @@ export const itemEffects = {
     },
     'life-orb': {
         onModifyDamage: (damageDetails, attacker, move) => {
-            console.log('>>> ENTERING Life Orb onModifyDamage hook.');
-            console.log('>>> Move name:', move.name, '| sheerForceBoosted is:', move.sheerForceBoosted);
-            if (!move.sheerForceBoosted) damageDetails.finalMultiplier *= 1.3;
-            console.log('>>> APPLIED Life Orb boost. New multiplier:', damageDetails.finalMultiplier);
+            if (!move.sheerForceBoosted) {
+                damageDetails.finalMultiplier *= 1.3;
+            }
         },
-        // CORRECTED onAfterDamageDealt hook
         onAfterDamageDealt: (damage, attacker, move, battleState, newLog) => {
-            // Add a check for Magic Guard here
-            if (!move.sheerForceBoosted && getEffectiveAbility(attacker, battleState)?.toLowerCase() !== 'magic-guard' && attacker.currentHp > 0) {
+            const ability = getEffectiveAbility(attacker, battleState)?.toLowerCase();
+            if (!move.sheerForceBoosted && ability !== 'magic-guard' && attacker.currentHp > 0) {
                 const recoil = Math.max(1, Math.floor(attacker.maxHp / 10));
                 attacker.currentHp = Math.max(0, attacker.currentHp - recoil);
                 newLog.push({ type: 'text', text: `${attacker.name} was hurt by its Life Orb!` });
@@ -446,9 +444,6 @@ export const itemEffects = {
             return healAmount * 1.3;
         }
     },
-
-    // --- NEW ITEMS: "Pinch" Berries (Stat-Boosting) ---
-
     'liechi-berry': {
         onTakeDamage: (damage, target, move, battleState, newLog) => {
             // Check if HP will drop below 1/4 and the item is held
@@ -560,7 +555,7 @@ export const itemEffects = {
     },
     'white-herb': {
         onStatLowered: (target, battleState, newLog) => {
-            if (target.heldItem?.name.toLowerCase() === 'white herb') {
+            if (target.heldItem?.name.toLowerCase() === 'white-herb') {
                 let statsWereRestored = false;
                 for (const stat in target.stat_stages) {
                     if (target.stat_stages[stat] < 0) {
@@ -659,7 +654,7 @@ export const itemEffects = {
     'absorb-bulb': {
         onTakeDamage: (damage, target, move, battleState, newLog, statChanger) => {
             // Activates if hit by a Water-type move, damage is dealt, and the item is held.
-            if (damage > 0 && move.type === 'water' && target.heldItem?.name.toLowerCase() === 'absorb bulb') {
+            if (damage > 0 && move.type === 'water' && target.heldItem?.name.toLowerCase() === 'absorb-bulb') {
                 newLog.push({ type: 'text', text: `${target.name}'s Absorb Bulb was used!` });
                 // Use the engine's stat change function to correctly raise Sp. Atk
                 statChanger(target, 'special-attack', 1, newLog, battleState);
@@ -672,7 +667,7 @@ export const itemEffects = {
     'cell-battery': {
         onTakeDamage: (damage, target, move, battleState, newLog, statChanger) => {
             // Activates if hit by an Electric-type move
-            if (damage > 0 && move.type === 'electric' && target.heldItem?.name.toLowerCase() === 'cell battery') {
+            if (damage > 0 && move.type === 'electric' && target.heldItem?.name.toLowerCase() === 'cell-battery') {
                 newLog.push({ type: 'text', text: `${target.name}'s Cell Battery was used!` });
                 statChanger(target, 'attack', 1, newLog, battleState);
                 target.heldItem = null;
@@ -684,7 +679,7 @@ export const itemEffects = {
     'luminous-moss': {
         onTakeDamage: (damage, target, move, battleState, newLog, statChanger) => {
             // Activates if hit by a Water-type move
-            if (damage > 0 && move.type === 'water' && target.heldItem?.name.toLowerCase() === 'luminous moss') {
+            if (damage > 0 && move.type === 'water' && target.heldItem?.name.toLowerCase() === 'luminous-moss') {
                 newLog.push({ type: 'text', text: `${target.name}'s Luminous Moss was used!` });
                 statChanger(target, 'special-defense', 1, newLog, battleState);
                 target.heldItem = null;
@@ -745,7 +740,7 @@ export const itemEffects = {
         // This hook will be called by the Intimidate ability's effect.
         onIntimidated: (target, battleState, newLog, statChanger) => {
             // Check if the item is still held (it might have been removed by another effect)
-            if (target.heldItem?.name.toLowerCase() === 'adrenaline orb') {
+            if (target.heldItem?.name.toLowerCase() === 'adrenaline-orb') {
                 newLog.push({ type: 'text', text: `${target.name}'s Adrenaline Orb was used!` });
 
                 // Raise speed by one stage

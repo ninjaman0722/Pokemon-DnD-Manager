@@ -16,7 +16,7 @@ const BASE_FORM_MAP = {
 const itemDataCache = new Map();
 export async function fetchItemData(itemName) {
     if (!itemName) return null;
-    const itemKey = itemName.toLowerCase().replace(/\s/g, '-');
+    const itemKey = itemName.toLowerCase();
     if (itemDataCache.has(itemKey)) { return itemDataCache.get(itemKey); }
     try {
         const response = await fetch(`${POKEAPI_BASE_URL}item/${itemKey}/`);
@@ -26,9 +26,9 @@ export async function fetchItemData(itemName) {
         }
         const data = await response.json();
         const result = {
-            name: data.name.replace(/-/g, ' '),
+            name: data.name,
             sprite: data.sprites.default,
-            category: data.category.name.replace(/-/g, ' '),
+            category: data.category.name,
             effect_entries: data.effect_entries
         };
         itemDataCache.set(itemKey, result);
@@ -98,7 +98,7 @@ export const calculateHitChance = (attacker, defender, move, battleState) => {
 };
 const pokemonDataCache = new Map();
 export async function fetchPokemonData(name, level = 50, heldItemName = '', customMovesList = []) {
-    let pokeKey = name.toLowerCase().replace(/\s/g, '-');
+    let pokeKey = name.toLowerCase();
     if (BASE_FORM_MAP[pokeKey]) {
         pokeKey = BASE_FORM_MAP[pokeKey];
     }
@@ -124,7 +124,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     const itemPromise = fetchItemData(heldItemName);
     const abilityPromises = pokeData.abilities.map(a => fetch(a.ability.url).then(res => res.json()));
 
-    const allLearnableMoveNames = [...new Set(pokeData.moves.map(m => m.move.name.replace(/-/g, ' ')))];
+    const allLearnableMoveNames = [...new Set(pokeData.moves.map(m => m.move.name))];
 
     // --- THIS IS THE CORRECTED, SAFER SORTING LOGIC ---
     const defaultMoveSetNames = pokeData.moves
@@ -138,7 +138,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
             return levelB - levelA;
         })
         .slice(0, 4)
-        .map(m => m.move.name.replace(/-/g, ' '));
+        .map(m => m.move.name);
 
     const movePromises = defaultMoveSetNames.map(async (moveName) => {
         const customMoveOverride = customMovesList.find(cm => cm.name.toLowerCase() === moveName.toLowerCase());
@@ -179,7 +179,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     return {
         id: crypto.randomUUID(),
         pokeApiId: pokeData.id,
-        name: speciesIdentifier.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+        name: speciesIdentifier.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
         speciesName: speciesName,
         speciesIdentifier: speciesIdentifier,
         level,
@@ -198,8 +198,8 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
         moves: moves.map(m => ({ ...m, pp: m.maxPp })),
         allMoveNames: allLearnableMoveNames,
         types,
-        abilities: fullAbilities.map(a => ({ ...a, name: a.name.replace(/-/g, ' ') })),
-        ability: (fullAbilities.find(a => !a.is_hidden)?.name || fullAbilities[0]?.name || '').replace(/-/g, ' '),
+        abilities: fullAbilities.map(a => ({ ...a, name: a.name })),
+        ability: (fullAbilities.find(a => !a.is_hidden)?.name || fullAbilities[0]?.name || ''),
         heldItem: heldItem,
         status: 'None',
         volatileStatuses: [],
@@ -224,7 +224,7 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
 const moveDataCache = new Map();
 export async function fetchMoveData(moveName) {
     if (!moveName) return null;
-    const moveKey = moveName.toLowerCase().replace(/\s/g, '-');
+    const moveKey = moveName.toLowerCase();
     if (moveDataCache.has(moveKey)) { return moveDataCache.get(moveKey); }
     try {
         const response = await fetch(`${POKEAPI_BASE_URL}move/${moveKey}/`);
@@ -234,7 +234,7 @@ export async function fetchMoveData(moveName) {
         const englishEffectEntry = data.effect_entries.find(e => e.language.name === 'en') || { short_effect: 'No description available.' };
 
         const moveData = {
-            name: data.name.replace(/-/g, ' '),
+            name: data.name,
             type: data.type.name,
             damage_class: data.damage_class.name,
             power: data.power || 0,
@@ -280,25 +280,25 @@ export const calculateCritStage = (pokemon, move, highCritRateMovesSet) => {
     let stage = 0;
 
     // Check for high crit-rate moves
-    if (highCritRateMovesSet.has(move.name.toLowerCase().replace(/\s/g, '-'))) {
+    if (highCritRateMovesSet.has(move.name.toLowerCase())) {
         stage += 1;
     }
 
     // Check for abilities like Super Luck
-    if (getEffectiveAbility(pokemon)?.toLowerCase() === 'super luck') {
+    if (getEffectiveAbility(pokemon)?.toLowerCase() === 'super-luck') {
         stage += 1;
     }
 
     // Check for held items that boost crit rate
     const heldItemName = pokemon.heldItem?.name.toLowerCase();
-    if (heldItemName === 'scope lens' || heldItemName === 'razor claw') {
+    if (heldItemName === 'scope-lens' || heldItemName === 'razor-claw') {
         stage += 1;
     }
     // Check for species-specific crit items
     if (heldItemName === 'stick' && pokemon.name.toLowerCase().includes('farfetch')) {
         stage += 2;
     }
-    if (heldItemName === 'lucky punch' && pokemon.name.toLowerCase() === 'chansey') {
+    if (heldItemName === 'lucky-punch' && pokemon.name.toLowerCase() === 'chansey') {
         stage += 2;
     }
 

@@ -1,23 +1,26 @@
+// items.test.js
+
 import { itemEffects } from '../../../config/itemEffects';
 import { TYPE_CHART } from '../../../config/gameData';
+// --- FIX: Import the test state factory ---
+import { createPokemon } from '../__helpers__/TestStateFactory';
 
 describe('Item Tests: Weakness Policy', () => {
     it('should sharply raise Attack and Sp. Atk when hit by a super-effective move', () => {
-        // ARRANGE: Create a pokemon holding the item with initial stats
-        const pokemon = {
-            name: 'Tyranitar',
+        // ARRANGE: Use the factory to create the test Pokémon
+        // --- FIX: Use createPokemon for a realistic and consistent object ---
+        const pokemon = createPokemon('Tyranitar', {
             types: ['rock', 'dark'],
             heldItem: { name: 'weakness-policy' },
-            stat_stages: { 'attack': 0, 'special-attack': 0 }
-        };
-        // Create a super-effective move (Fighting vs. Rock/Dark)
+        });
+        
         const move = { type: 'fighting' };
         const mockLog = [];
         
-        // ACT: Call the item's specific hook function directly
+        // ACT
         itemEffects['weakness-policy'].onTakeDamage(100, pokemon, move, {}, mockLog);
 
-        // ASSERT: Check if the stats were raised and the item was consumed
+        // ASSERT
         expect(pokemon.stat_stages['attack']).toBe(2);
         expect(pokemon.stat_stages['special-attack']).toBe(2);
         expect(pokemon.heldItem).toBeNull();

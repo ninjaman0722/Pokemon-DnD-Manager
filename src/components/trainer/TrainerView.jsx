@@ -268,7 +268,7 @@ const TrainerView = () => {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="bg-gray-900/70 p-3 rounded-lg">
                                         <h4 className="font-bold text-indigo-300 border-b border-indigo-500/50 pb-1 mb-2">Ability</h4>
-                                        <p className="font-semibold capitalize text-white text-lg">{selectedPokemon.ability?.replace(/-/g, ' ')}</p>
+                                        <p className="font-semibold capitalize text-white text-lg">{selectedPokemon?.ability || 'No Ability'}</p>
                                         <p className="text-xs text-gray-400 mt-1">{selectedPokemon.abilityDescription || "No description available."}</p>
                                     </div>
                                     <div className="bg-gray-900/70 p-3 rounded-lg flex flex-col text-center">
@@ -394,7 +394,7 @@ const TrainerView = () => {
                                 onClick={() => setActivePocket(pocket)}
                                 className={`w-full rounded-lg py-2 text-sm font-medium leading-5 transition-all duration-200 ease-in-out capitalize ${activePocket === pocket ? 'bg-yellow-600 text-black shadow' : 'text-gray-300 hover:bg-gray-700/50'}`}
                             >
-                                {pocket.replace(/-/g, ' ')}
+                                {pocket}
                             </button>
                         ))}
                     </div>
@@ -409,7 +409,7 @@ const TrainerView = () => {
                                     // 4. Add onClick and cursor-pointer to the <li>
                                     <li key={item.name} onClick={() => setViewingItem(item)} className="flex items-center gap-4 p-2 bg-gray-700 rounded-md cursor-pointer hover:bg-indigo-800">
                                         <img src={item.sprite} alt={item.name} className="w-8 h-8" />
-                                        <span className="flex-grow capitalize">{item.name.replace(/-/g, ' ')}</span>
+                                        <span className="flex-grow capitalize">{item.name}</span>
                                         <span className="font-semibold">x{item.quantity}</span>
                                     </li>
                                 ))}

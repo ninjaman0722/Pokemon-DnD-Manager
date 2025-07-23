@@ -69,8 +69,8 @@ const BattlePokemonCard = ({ pokemon, isPlayerSide, onClick, isSelectable, isSel
                     })}
                 </div>
                 <div className="text-xs text-gray-300 mt-1 capitalize">
-                    {pokemon.ability && <span>Ability: {pokemon.ability.replace(/-/g, ' ')}</span>}
-                    {pokemon.heldItem && <span className="ml-2">Item: {pokemon.heldItem.name.replace(/-/g, ' ')}</span>}
+                    {pokemon.ability && <span>Ability: {pokemon.ability}</span>}
+                    {pokemon.heldItem && <span className="ml-2">Item: {pokemon.heldItem.name}</span>}
                 </div>
             </div>
         </div>

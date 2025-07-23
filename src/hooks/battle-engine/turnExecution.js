@@ -193,22 +193,24 @@ const runEndOfTurnPhase = (currentBattleState, newLog) => {
 
         // Loop through our configuration array
         for (const effect of endOfTurnEffects) {
-            if (effect.applies(pokemon, currentBattleState) && (!effect.isImmune || !effect.isImmune(pokemon, currentBattleState))) {
-                effect.execute(pokemon, currentBattleState, newLog);
-                if (pokemon.currentHp === 0) {
-                    pokemon.fainted = true;
-                    newLog.push({ type: 'text', text: `${pokemon.name} fainted!` });
-                    break; // Stop processing more effects if the Pokémon faints
-                }
+            if (!effect.applies(pokemon, currentBattleState)) continue;
+            if (typeof effect.isImmune === 'function' && effect.isImmune(pokemon, currentBattleState)) continue;
+
+            effect.execute(pokemon, currentBattleState, newLog);
+            if (pokemon.currentHp === 0) {
+                pokemon.fainted = true;
+                newLog.push({ type: 'text', text: `${pokemon.name} fainted!` });
+                break;
             }
+
         }
     });
 
     // 3. Decrement turns for all field conditions (weather, terrain, etc.)
     const fieldConditions = ['weatherTurns', 'terrainTurns', 'trickRoomTurns', 'magicRoomTurns', 'gravityTurns', 'wonderRoomTurns'];
     const fieldEndMessages = {
-        weatherTurns: `The ${field.weather?.replace('-', ' ')} stopped.`,
-        terrainTurns: `The ${field.terrain?.replace('-', ' ')} disappeared.`,
+        weatherTurns: `The ${field.weather} stopped.`,
+        terrainTurns: `The ${field.terrain} disappeared.`,
         trickRoomTurns: 'The twisted dimensions returned to normal.',
         magicRoomTurns: 'The strange room returned to normal.',
         gravityTurns: 'The gravity returned to normal.',
@@ -421,7 +423,7 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
             const terrainToSet = MOVE_TO_TERRAIN_MAP.get(moveNameLower);
             if (terrainToSet) {
                 if (currentBattleState.field.terrain !== 'none') { newLog.push({ type: 'text', text: 'But it failed!' }); }
-                else { currentBattleState.field.terrain = terrainToSet; currentBattleState.field.terrainTurns = (itemName === 'terrain extender') ? 8 : 5; newLog.push({ type: 'text', text: `The battlefield became ${terrainToSet.replace('-', ' ')}!` }); }
+                else { currentBattleState.field.terrain = terrainToSet; currentBattleState.field.terrainTurns = (itemName === 'terrain extender') ? 8 : 5; newLog.push({ type: 'text', text: `The battlefield became ${terrainToSet}!` }); }
                 continue;
             }
             const weatherToSet = MOVE_TO_WEATHER_MAP.get(moveNameLower);
@@ -838,7 +840,7 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
             if (itemEffects[itemName]?.onAfterDamageDealt) {
                 itemEffects[itemName].onAfterDamageDealt(lastDamageDealt, actor, move, currentBattleState, newLog);
             }
-            const moveNameKey = move.name.toLowerCase().replace(/\s/g, '-');
+            const moveNameKey = move.name.toLowerCase();
             if (RECOIL_MOVES.has(moveNameKey) && lastDamageDealt > 0 && actor.currentHp > 0 && actorAbility !== 'magic-guard') {
                 const recoilFraction = RECOIL_MOVES.get(moveNameKey);
                 const recoilDamage = Math.max(1, Math.floor(lastDamageDealt * recoilFraction));
@@ -894,7 +896,7 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
             currentBattleState.zMoveUsed[actorTeamId] = true;
             newLog.push({ type: 'text', text: `${actor.name} is unleashing its full-force Z-Move!` });
 
-            const crystalData = Z_CRYSTAL_MAP[actor.heldItem?.name?.toLowerCase().replace(/\s/g, '-')];
+            const crystalData = Z_CRYSTAL_MAP[actor.heldItem?.name?.toLowerCase()];
             if (!crystalData) continue;
 
             const zMoveObject = {
@@ -1033,7 +1035,7 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
                     const { updatedTarget, newLog: statLog } = calculateStatChange(target, statToBoost, boostAmount, currentBattleState);
                     Object.assign(target, updatedTarget);
                     newLog.push(...statLog);
-                    newLog.push({ type: 'text', text: `${target.name}'s ${statToBoost.replace('-', ' ')} rose sharply!` });
+                    newLog.push({ type: 'text', text: `${target.name}'s ${statToBoost} rose sharply!` });
                 } else {
                     newLog.push({ type: 'text', text: `${target.name}'s stats won't go any higher!` });
                 }

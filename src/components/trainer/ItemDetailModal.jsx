@@ -14,7 +14,7 @@ const ItemDetailModal = ({ item, onClose }) => {
         <div className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-800 text-white rounded-lg shadow-2xl w-full max-w-md p-6 space-y-4">
                 <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-indigo-400 capitalize">{item.name.replace(/-/g, ' ')}</h2>
+                    <h2 className="text-2xl font-bold text-indigo-400 capitalize">{item.name}</h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-white font-bold text-2xl">×</button>
                 </div>
                 <div className="text-center bg-gray-900/50 p-4 rounded-md">

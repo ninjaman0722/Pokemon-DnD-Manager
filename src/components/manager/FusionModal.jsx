@@ -19,8 +19,8 @@ const FusionModal = ({ trainer, onFuse, onClose }) => {
         if (basePokemon && partnerPokemon) {
             const recipe = FUSION_RECIPES[basePokemon.speciesName];
             // Normalize both item names for a robust, case-insensitive check.
-            const normalizedRecipeItem = recipe.item.toLowerCase().replace(/\s/g, '-');
-            const hasItem = Object.values(trainer.bag || {}).some(item => item.name.toLowerCase().replace(/\s/g, '-') === normalizedRecipeItem);
+            const normalizedRecipeItem = recipe.item.toLowerCase();
+            const hasItem = Object.values(trainer.bag || {}).some(item => item.name.toLowerCase() === normalizedRecipeItem);
             setCanFuse(hasItem);
         } else {
             setCanFuse(false);

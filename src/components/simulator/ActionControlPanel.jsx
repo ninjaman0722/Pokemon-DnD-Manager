@@ -16,7 +16,7 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
     const allActivePokemon = [...playerActivePokemon, ...opponentActivePokemon];
     const teamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
     const zMoveHasBeenUsed = battleState.zMoveUsed?.[teamId] || false;
-    const crystalData = pokemon.heldItem ? Z_CRYSTAL_MAP[pokemon.heldItem.name.toLowerCase().replace(/\s/g, '-')] : null;
+    const crystalData = pokemon.heldItem ? Z_CRYSTAL_MAP[pokemon.heldItem.name.toLowerCase()] : null;
 
     const canUseZMove = !zMoveHasBeenUsed && crystalData &&
         ((crystalData.type && pokemon.moves.some(move => move.type === crystalData.type && move.damage_class.name !== 'status')) ||

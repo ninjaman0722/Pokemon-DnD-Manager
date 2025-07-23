@@ -59,7 +59,7 @@ export const abilityEffects = {
     },
     'drizzle': {
         onSwitchIn: (pokemon, battleState, newLog) => {
-            const turns = pokemon.heldItem?.name.toLowerCase() === 'damp rock' ? 8 : 5;
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'damp-rock' ? 8 : 5;
             setWeather('rain', turns, 'It started to rain!', pokemon, battleState, newLog);
         }
     },
@@ -68,19 +68,19 @@ export const abilityEffects = {
     },
     'sand-stream': {
         onSwitchIn: (pokemon, battleState, newLog) => {
-            const turns = pokemon.heldItem?.name.toLowerCase() === 'smooth rock' ? 8 : 5;
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'smooth-rock' ? 8 : 5;
             setWeather('sandstorm', turns, 'A sandstorm kicked up!', pokemon, battleState, newLog);
         }
     },
     'drought': {
         onSwitchIn: (pokemon, battleState, newLog) => {
-            const turns = pokemon.heldItem?.name.toLowerCase() === 'heat rock' ? 8 : 5;
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'heat-rock' ? 8 : 5;
             setWeather('sunshine', turns, 'The sunlight turned harsh!', pokemon, battleState, newLog);
         }
     },
     'orichalcum-pulse': { // Same as Drought for now
         onSwitchIn: (pokemon, battleState, newLog) => {
-            const turns = pokemon.heldItem?.name.toLowerCase() === 'heat rock' ? 8 : 5;
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'heat-rock' ? 8 : 5;
             setWeather('sunshine', turns, 'The sunlight turned harsh!', pokemon, battleState, newLog);
         }
     },
@@ -89,7 +89,7 @@ export const abilityEffects = {
     },
     'snow-warning': {
         onSwitchIn: (pokemon, battleState, newLog) => {
-            const turns = pokemon.heldItem?.name.toLowerCase() === 'icy rock' ? 8 : 5;
+            const turns = pokemon.heldItem?.name.toLowerCase() === 'icy-rock' ? 8 : 5;
             setWeather('snow', turns, 'It started to snow!', pokemon, battleState, newLog);
         }
     },
@@ -110,12 +110,12 @@ export const abilityEffects = {
     'levitate': {
         onCheckImmunity: (move, target, attackerAbility) => {
             // Add this check at the beginning
-            if (attackerAbility?.toLowerCase() === 'mold breaker') return false;
+            if (attackerAbility?.toLowerCase() === 'mold-breaker') return false;
             return move.type === 'ground';
         }
     },
     'guts': {
-        onModifyStat: (stat, value, pokemon) => (stat === 'attack' && pokemon.status !== 'None' && !pokemon.isSpecial) ? value * 1.5 : value
+        onModifyStat: (stat, value, pokemon) => (stat === 'attack' && pokemon.status !== 'None') ? value * 1.5 : value
     },
     'toxic-boost': {
         onModifyStat: (stat, value, pokemon) => (stat === 'attack' && (pokemon.status === 'Poisoned' || pokemon.status === 'Badly Poisoned') && !pokemon.isSpecial) ? value * 1.5 : value
@@ -162,54 +162,54 @@ export const abilityEffects = {
     'battle-armor': {
         onCritImmunity: (target, move, attackerAbility) => {
             // Add this check at the beginning
-            if (attackerAbility?.toLowerCase() === 'mold breaker') return false;
+            if (attackerAbility?.toLowerCase() === 'mold-breaker') return false;
             return true;
         }
     },
     'shell-armor': {
         onCritImmunity: (target, move, attackerAbility) => {
             // Add this check at the beginning
-            if (attackerAbility?.toLowerCase() === 'mold breaker') return false;
+            if (attackerAbility?.toLowerCase() === 'mold-breaker') return false;
             return true;
         }
     },
     'solid-rock': {
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker' && damageDetails.effectiveness > 1) {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker' && damageDetails.effectiveness > 1) {
                 damageDetails.finalMultiplier *= 0.75;
             }
         }
     },
     'filter': { // Same as Solid Rock
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker' && damageDetails.effectiveness > 1) {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker' && damageDetails.effectiveness > 1) {
                 damageDetails.finalMultiplier *= 0.75;
             }
         }
     },
     'thick-fat': {
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker' && (move.type === 'fire' || move.type === 'ice')) {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker' && (move.type === 'fire' || move.type === 'ice')) {
                 damageDetails.finalMultiplier *= 0.5;
             }
         }
     },
     'marvel-scale': {
         onModifyStat: (stat, value, pokemon, attacker) => { // Assume engine passes attacker
-            if (getEffectiveAbility(attacker)?.toLowerCase() === 'mold breaker') return value;
+            if (getEffectiveAbility(attacker)?.toLowerCase() === 'mold-breaker') return value;
             return (stat === 'defense' && pokemon.status?.toLowerCase() !== 'none' && !pokemon.isSpecial) ? value * 1.5 : value
         }
     },
     'fur-coat': {
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker' && !move.isSpecial) {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker' && !move.isSpecial) {
                 damageDetails.finalMultiplier *= 0.5;
             }
         }
     },
     'fluffy': {
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker') {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker') {
                 if (!move.isSpecial) {
                     damageDetails.finalMultiplier *= 0.5;
                 }
@@ -222,21 +222,21 @@ export const abilityEffects = {
     },
     'ice-scales': {
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker' && move.isSpecial) {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker' && move.isSpecial) {
                 damageDetails.finalMultiplier *= 0.5;
             }
         }
     },
     'multiscale': {
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker' && target.currentHp === target.maxHp) {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker' && target.currentHp === target.maxHp) {
                 damageDetails.finalMultiplier *= 0.5;
             }
         }
     },
     'shadow-shield': { // Same as Multiscale
         onModifyDamage: (damageDetails, target, move, attackerAbility) => {
-            if (attackerAbility?.toLowerCase() !== 'mold breaker' && target.currentHp === target.maxHp) {
+            if (attackerAbility?.toLowerCase() !== 'mold-breaker' && target.currentHp === target.maxHp) {
                 damageDetails.finalMultiplier *= 0.5;
             }
         }
@@ -320,7 +320,7 @@ export const abilityEffects = {
     'disguise': {
         onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbility) => {
             // Add this check at the beginning
-            if (attackerAbility?.toLowerCase() === 'mold breaker') return damage;
+            if (attackerAbility?.toLowerCase() === 'mold-breaker') return damage;
 
             if (!pokemon.transformed && damage > 0) {
                 const bustedForm = pokemon.forms?.find(f => f.formName === 'mimikyu-busted');
@@ -333,7 +333,7 @@ export const abilityEffects = {
             return damage;
         }
     },
-    'zen mode': {
+    'zen-mode': {
         onTakeDamage: (damage, pokemon, move, battleState, newLog) => {
             const hpAfterDamage = pokemon.currentHp - damage;
 
@@ -366,7 +366,7 @@ export const abilityEffects = {
     'ice-face': {
         onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbility) => {
             // Add this check at the beginning
-            if (attackerAbility?.toLowerCase() === 'mold breaker') return damage;
+            if (attackerAbility?.toLowerCase() === 'mold-breaker') return damage;
 
             if (!pokemon.transformed && !move.isSpecial && damage > 0) {
                 const noiceForm = pokemon.forms?.find(f => f.formName === 'eiscue-noice');
@@ -430,7 +430,7 @@ export const abilityEffects = {
             return priority;
         }
     },
-    'mold breaker': {
+    'mold-breaker': {
         // This ability's effects are checked by other abilities.
     },
     'magic-bounce': {
@@ -441,8 +441,8 @@ export const abilityEffects = {
     },
     'sturdy': {
         onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbility) => {
-            // Mold Breaker and similar abilities bypass Sturdy
-            if (attackerAbility?.toLowerCase() === 'mold breaker') {
+            // mold-breaker and similar abilities bypass Sturdy
+            if (attackerAbility?.toLowerCase() === 'mold-breaker') {
                 return damage;
             }
 
@@ -579,7 +579,7 @@ export const abilityEffects = {
         onSwitchIn: (pokemon, battleState, newLog, statChanger) => {
             // Activates in harsh sunlight OR if holding Booster Energy
             const isSunlight = battleState.field.weather === 'sunshine' || battleState.field.weather === 'harsh-sunshine';
-            const holdsBoosterEnergy = pokemon.heldItem?.name.toLowerCase() === 'booster energy';
+            const holdsBoosterEnergy = pokemon.heldItem?.name.toLowerCase() === 'booster-energy';
 
             if (pokemon.boosterApplied) return; // Prevent re-activation
 
@@ -599,7 +599,7 @@ export const abilityEffects = {
                 // We'll store the boost directly on the pokemon object for the engine to use.
                 pokemon.boosterBoost = { stat: highestStat, multiplier: boostAmount };
                 pokemon.boosterApplied = true;
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Protosynthesis activated, boosting its ${highestStat.replace('-', ' ')}!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Protosynthesis activated, boosting its ${highestStat}!` });
 
                 // Consume Booster Energy if it was the trigger
                 if (holdsBoosterEnergy) {
@@ -613,7 +613,7 @@ export const abilityEffects = {
         onSwitchIn: (pokemon, battleState, newLog, statChanger) => {
             // Activates in Electric Terrain OR if holding Booster Energy
             const isElectricTerrain = battleState.field.terrain === 'electric-terrain';
-            const holdsBoosterEnergy = pokemon.heldItem?.name.toLowerCase() === 'booster energy';
+            const holdsBoosterEnergy = pokemon.heldItem?.name.toLowerCase() === 'booster-energy';
 
             if (pokemon.boosterApplied) return;
 
@@ -631,7 +631,7 @@ export const abilityEffects = {
                 const boostAmount = highestStat === 'speed' ? 1.5 : 1.3;
                 pokemon.boosterBoost = { stat: highestStat, multiplier: boostAmount };
                 pokemon.boosterApplied = true;
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Quark Drive activated, boosting its ${highestStat.replace('-', ' ')}!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Quark Drive activated, boosting its ${highestStat}!` });
 
                 if (holdsBoosterEnergy) {
                     pokemon.heldItem = null;
@@ -816,7 +816,7 @@ export const abilityEffects = {
             if (statsToBoost.length > 0) {
                 // Pick a random stat to boost
                 const randomBoostStat = statsToBoost[Math.floor(Math.random() * statsToBoost.length)];
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody boosted its ${randomBoostStat.replace('-', ' ')}!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody boosted its ${randomBoostStat}!` });
                 statChanger(pokemon, randomBoostStat, 2, newLog, battleState);
 
                 // Remove the boosted stat from the potential stats to lower
@@ -829,7 +829,7 @@ export const abilityEffects = {
             if (statsToLower.length > 0) {
                 // Pick a random stat to lower
                 const randomLowerStat = statsToLower[Math.floor(Math.random() * statsToLower.length)];
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody lowered its ${randomLowerStat.replace('-', ' ')}!` });
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody lowered its ${randomLowerStat}!` });
                 statChanger(pokemon, randomLowerStat, -1, newLog, battleState);
             }
         }
@@ -966,7 +966,7 @@ export const abilityEffects = {
 
     'mold-breaker': {
         // This is a "marker ability". Other abilities (like Levitate, Sturdy, Flash Fire)
-        // are responsible for checking if their effect should be ignored by Mold Breaker.
+        // are responsible for checking if their effect should be ignored by mold-breaker.
         // This entry makes it official in the ability list.
     },
 

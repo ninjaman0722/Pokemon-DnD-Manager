@@ -24,7 +24,7 @@ const HazardDisplay = ({ side, hazards }) => {
                 if (layers === 0) return null; // Don't show hazards with 0 layers
 
                 return (
-                    <div key={hazardKey} className="relative" title={`${hazardKey.replace('-', ' ')} (x${layers})`}>
+                    <div key={hazardKey} className="relative" title={`${hazardKey} (x${layers})`}>
                         <img 
                             src={HAZARD_ICONS[hazardKey]} 
                             alt={hazardKey} 

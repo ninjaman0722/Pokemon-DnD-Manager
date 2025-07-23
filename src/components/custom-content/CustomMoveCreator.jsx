@@ -43,7 +43,7 @@ const CustomMoveCreator = () => {
             const collectionPath = `campaigns/${state.selectedCampaignId }/custom-moves`;
 
             if (moveData.isOverride) {
-                const docId = moveData.name.toLowerCase().replace(/\s/g, '-');
+                const docId = moveData.name.toLowerCase();
                 const docRef = doc(db, collectionPath, docId);
                 await setDoc(docRef, moveData);
             } else if (moveData.id) {
@@ -111,7 +111,7 @@ const CustomMoveCreator = () => {
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={() => handleOpenEditModal(m)} className="text-sm bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded">Edit</button>
-                                    <button onClick={() => handleDeleteCustomMove(m.id || m.name.toLowerCase().replace(/\s/g, '-'))} className="text-sm bg-red-600 hover:bg-red-700 px-3 py-1 rounded">Delete</button>
+                                    <button onClick={() => handleDeleteCustomMove(m.id || m.name.toLowerCase())} className="text-sm bg-red-600 hover:bg-red-700 px-3 py-1 rounded">Delete</button>
                                 </div>
                             </li>
                         ))}

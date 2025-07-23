@@ -466,7 +466,7 @@ const handlePartyLevelChange = async (newLevel) => {
 
         let healedPokemon = { ...pokemonToHeal, moves: [...pokemonToHeal.moves.map(m => ({ ...m }))] };
         const newBag = { ...selectedTrainer.bag };
-        const itemKey = itemToUse.name.replace(/\s/g, '-').toLowerCase();
+        const itemKey = itemToUse.name.toLowerCase();
         const itemName = itemToUse.name.toLowerCase();
 
         switch (itemName) {
@@ -540,7 +540,7 @@ const handlePartyLevelChange = async (newLevel) => {
         }
 
         const newBag = { ...selectedTrainer.bag };
-        const itemKey = itemToUse.name.replace(/\s/g, '-').toLowerCase();
+        const itemKey = itemToUse.name.toLowerCase();
         if (newBag[itemKey].quantity > 1) {
             newBag[itemKey].quantity -= 1;
         } else {
@@ -602,7 +602,7 @@ const handlePartyLevelChange = async (newLevel) => {
         const ball = POKEBALLS.find(b => b.name === (pokemon.pokeball || 'poke-ball'));
         if (!ball) return null;
         return (
-            <div className="absolute -top-1 -left-1 bg-gray-900/50 p-0.5 rounded-full z-10" title={ball.name.replace(/-/g, ' ')}>
+            <div className="absolute -top-1 -left-1 bg-gray-900/50 p-0.5 rounded-full z-10" title={ball.name}>
                 <img src={ball.sprite} alt={ball.name} className="h-5 w-5" />
             </div>
         );

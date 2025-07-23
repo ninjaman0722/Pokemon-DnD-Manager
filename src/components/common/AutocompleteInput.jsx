@@ -9,7 +9,7 @@ const AutocompleteInput = ({ value, onChange, onSelect, placeholder, sourceList 
 
     useEffect(() => {
         if (value.length > 0 && sourceList.length > 0) {
-            const filtered = sourceList.filter(p => p.toLowerCase().replace(/-/g, ' ').startsWith(value.toLowerCase())).slice(0, 10);
+            const filtered = sourceList.filter(p => p.toLowerCase().startsWith(value.toLowerCase())).slice(0, 10);
             setSuggestions(filtered);
             setShowSuggestions(true);
         } else {
@@ -84,7 +84,7 @@ const AutocompleteInput = ({ value, onChange, onSelect, placeholder, sourceList 
                             // NEW: Conditionally apply a highlight class
                             className={`px-3 py-2 cursor-pointer capitalize ${index === activeSuggestionIndex ? 'bg-indigo-600' : 'hover:bg-indigo-500'}`}
                         >
-                            {itemName.replace(/-/g, ' ')}
+                            {itemName}
                         </li>
                     ))}
                 </ul>

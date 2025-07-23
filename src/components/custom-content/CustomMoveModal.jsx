@@ -95,7 +95,7 @@ const CustomMoveModal = ({ moveToEdit, onSave, onClose }) => {
                         <div>
                             <label className="text-xs">Stat</label>
                             <select value={effect.stat} onChange={e => handleUpdateEffect(effect.id, 'stat', e.target.value)} className="w-full bg-gray-900 p-2 rounded-md text-sm capitalize">
-                                {['attack', 'defense', 'special-attack', 'special-defense', 'speed', 'accuracy', 'evasion'].map(s => <option key={s} value={s}>{s.replace('-', ' ')}</option>)}
+                                {['attack', 'defense', 'special-attack', 'special-defense', 'speed', 'accuracy', 'evasion'].map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                         </div>
                         <div>

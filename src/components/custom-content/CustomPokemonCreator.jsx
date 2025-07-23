@@ -50,7 +50,7 @@ const CustomPokemonCreator = () => {
 const handleSaveCustomPokemon = async (pokemonData) => {
     dispatch({ type: 'SET_LOADING', payload: 'Saving Custom Pokémon...' });
     try {
-        const docId = pokemonData.id || pokemonData.name.toLowerCase().replace(/\s/g, '-');
+        const docId = pokemonData.id || pokemonData.name.toLowerCase();
         // This now points to the campaign-specific subcollection
         const docRef = doc(db, `campaigns/${state.selectedCampaignId }/custom-pokemon`, docId);
         await setDoc(docRef, { ...pokemonData, id: docId });
