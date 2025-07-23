@@ -14,7 +14,7 @@ const BASE_FORM_MAP = {
 };
 
 const itemDataCache = new Map();
-export async function fetchItemData(itemName) {
+export async function fetchItemData(itemName) { // fix this
     if (!itemName) return null;
     const itemKey = itemName.toLowerCase();
     if (itemDataCache.has(itemKey)) { return itemDataCache.get(itemKey); }
