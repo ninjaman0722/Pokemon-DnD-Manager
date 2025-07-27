@@ -71,8 +71,8 @@ const InventoryView = ({ trainer, itemList, onBagUpdate, dispatch }) => {
                             <span className="capitalize truncate font-medium" title={item.name}>{item.name.replace(/-/g, ' ')}</span>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                            <input type="number" value={item.quantity} onChange={e => handleQuantityChange(item.name.replace(/\s/g, '-'), parseInt(e.target.value, 10) || 0)} className="w-16 bg-gray-900 p-1 rounded-md border border-gray-600 text-center" />
-                            <button onClick={() => handleQuantityChange(item.name.replace(/\s/g, '-'), 0)} className="bg-red-600 w-6 h-6 rounded font-bold text-xs flex items-center justify-center">✕</button>
+                            <input type="number" value={item.quantity} onChange={e => handleQuantityChange(item.id, parseInt(e.target.value, 10) || 0)} className="w-16 bg-gray-900 p-1 rounded-md border border-gray-600 text-center" />
+                            <button onClick={() => handleQuantityChange(item.id, 0)} className="bg-red-600 w-6 h-6 rounded font-bold text-xs flex items-center justify-center">✕</button>
                         </div>
                     </li>
                 ))}

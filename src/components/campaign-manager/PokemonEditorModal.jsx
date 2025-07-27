@@ -54,11 +54,8 @@ const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWi
     const handleItemSelect = async (itemName) => {
         setItemSearch(itemName);
         const itemData = itemName ? await fetchItemData(itemName) : null;
-
-        // --- MODIFIED LINE ---
-        // We now convert both the form's triggerItem and the selected itemName to lowercase for a reliable match.
         const targetForm = editedPokemon.forms?.find(form =>
-            form.changeMethod === 'ITEM_HOLD' && form.triggerItem.toLowerCase() === itemName.toLowerCase()
+            form.changeMethod === 'ITEM_HOLD' && form.triggerItem.toLowerCase().replace(/\s/g, '-') === itemData?.id
         );
 
         if (targetForm) {
@@ -171,8 +168,21 @@ const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWi
 
                         <div className="col-span-2">
                             <label className="block text-sm font-medium text-gray-400">Ability</label>
-                            <select value={editedPokemon.ability} onChange={(e) => handleFieldChange('ability', e.target.value)} className="w-full bg-gray-900 p-2 rounded-md border border-gray-600 capitalize">
-                                {editedPokemon.abilities?.map(ab => <option key={ab.name} value={ab.name.replace(/-/g, ' ')}>{ab.name.replace(/-/g, ' ')}</option>)}
+                            <select
+                                value={editedPokemon.ability.id} // CORRECTED: Use the ability's ID for the value
+                                onChange={(e) => {
+                                    // CORRECTED: Find the full ability object on change
+                                    const newAbility = editedPokemon.abilities.find(a => a.id === e.target.value);
+                                    if (newAbility) {
+                                        handleFieldChange('ability', newAbility);
+                                    }
+                                }}
+                                className="w-full bg-gray-900 p-2 rounded-md border border-gray-600 capitalize"
+                            >
+                                {editedPokemon.abilities?.map(ab => (
+                                    // CORRECTED: The option value is the ID, the text is the name
+                                    <option key={ab.id} value={ab.id}>{ab.name}</option>
+                                ))}
                             </select>
                         </div>
 
@@ -205,22 +215,7 @@ const PokemonEditorModal = ({ pokemon, onSave, onClose, dispatch, itemList, isWi
                             {NON_VOLATILE_STATUSES.map(sc => <option key={sc} value={sc}>{sc}</option>)}
                         </select>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-400">Volatile Conditions</label>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
-                            {VOLATILE_STATUSES.map(vs => (
-                                <label key={vs} className="flex items-center gap-2 text-sm">
-                                    <input
-                                        type="checkbox"
-                                        checked={editedPokemon.volatileStatuses?.includes(vs) || false}
-                                        onChange={(e) => handleVolatileStatusChange(vs, e.target.checked)}
-                                        className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded"
-                                    />
-                                    {vs}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
+
                 </div>
                 {/* This part will now automatically update when the form changes base stats! */}
                 <div><h3 className="text-lg font-semibold text-indigo-300">Stats (Lvl {editedPokemon.level})</h3><ul className="text-sm grid grid-cols-3 sm:grid-cols-6 gap-2 mt-1">{Object.entries(calculatedStats).map(([key, value]) => <li key={key} className="bg-gray-700 p-2 rounded text-center"><span className="font-semibold capitalize block">{key.replace('special-', 'Sp. ')}</span> {value}</li>)}</ul></div>

@@ -6,13 +6,19 @@
  * @param {object} overrides - An object with properties to override the defaults.
  * @returns {object} A complete Pokémon object for use in tests.
  */
+
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+};
+
 export const createPokemon = (name, overrides = {}) => {
   const defaults = {
-    id: `${name.toLowerCase()}-id-${Math.random()}`,
+    id: `${name.toLowerCase().replace(/\s/g, '-')}-id-${Math.random()}`,
     name: name,
     level: 50,
-    ability: 'overgrow',
-    item: null,
+    ability: { id: 'overgrow', name: 'Overgrow' }, // Default is now an object
+    heldItem: null, // Default heldItem is null
     status: 'None',
     types: ['normal'],
     moves: [],
@@ -23,7 +29,18 @@ export const createPokemon = (name, overrides = {}) => {
     currentHp: 100,
     fainted: false,
   };
-  return { ...defaults, ...overrides };
+
+  const final = { ...defaults, ...overrides };
+
+  // --- NEW: Automatically convert string inputs to the correct object structure ---
+  if (typeof final.ability === 'string') {
+    final.ability = { id: final.ability.toLowerCase().replace(/\s/g, '-'), name: toTitleCase(final.ability) };
+  }
+  if (typeof final.heldItem === 'string') {
+    final.heldItem = { id: final.heldItem.toLowerCase().replace(/\s/g, '-'), name: toTitleCase(final.heldItem) };
+  }
+
+  return final;
 };
 
 /**
@@ -34,8 +51,17 @@ export const createPokemon = (name, overrides = {}) => {
  * @returns {object} A complete battleState object.
  */
 export const createBattleState = (playerTeam, opponentTeam, fieldOverrides = {}) => {
-  const fieldDefaults = { weather: 'none', terrain: 'none', hazards: {}, trickRoomTurns: 0 };
-  
+  const fieldDefaults = {
+    weather: 'none',
+    weatherTurns: 0,
+    terrain: 'none',
+    terrainTurns: 0,
+    hazards: {},
+    trickRoomTurns: 0,
+    magicRoomTurns: 0,
+    gravityTurns: 0,
+    wonderRoomTurns: 0
+  };
   return {
     teams: [
       { id: 'players', pokemon: playerTeam },

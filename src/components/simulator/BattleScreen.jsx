@@ -123,7 +123,34 @@ const handleEnterTargetingMode = (move, baseAction) => {
     const renderControlArea = () => {
         const actionPanelContent = () => {
             if (phase === 'REPLACEMENT' && replacementInfo) {
-                // ... replacement logic ...
+                const { teamIndex, slotIndex } = replacementInfo;
+                const team = teams[teamIndex];
+                const faintedPokemon = team.pokemon[activePokemonIndices[teamIndex === 0 ? 'players' : 'opponent'][slotIndex]];
+                const availableReplacements = team.pokemon.filter((p, i) => !p.fainted && !activePokemonIndices[teamIndex === 0 ? 'players' : 'opponent'].includes(i));
+                return (
+                    <div className="bg-gray-900 rounded-lg p-4 flex flex-col justify-between h-full">
+                        <p className="text-lg">Choose a replacement for {faintedPokemon.name}:</p>
+                        <div className="grid grid-cols-3 gap-2">
+                            {availableReplacements.map(p => (
+                                <button key={p.id} onClick={() => handleSwitchIn(teamIndex, slotIndex, p.id)} className="bg-gray-700 hover:bg-gray-600 p-2 rounded flex flex-col items-center">
+                                    <img src={p.isShiny ? (p.shinySprite || p.sprite) : p.sprite} alt={p.name} className="h-16 w-16" />
+                                    {p.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }
+            if (targetingInfo.isActive) {
+                return (
+                    <div className="bg-gray-800 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center gap-4">
+                        <h2 className="text-xl font-bold text-yellow-400">Select Target(s) for {targetingInfo.baseAction.move.name}</h2>
+                        <div>
+                            <button onClick={handleConfirmTargets} disabled={targetingInfo.selected.length === 0} className="bg-green-600 hover:bg-green-700 font-bold py-2 px-6 rounded-lg text-lg disabled:bg-gray-600 disabled:cursor-not-allowed mx-2">Confirm Targets</button>
+                            <button onClick={handleCancelTargeting} className="bg-red-600 hover:bg-red-700 font-bold py-2 px-6 rounded-lg text-lg mx-2">Cancel</button>
+                        </div>
+                    </div>
+                );
             }
             if (selectedPokemonForPanel) {
                 return (

@@ -16,7 +16,7 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
     const allActivePokemon = [...playerActivePokemon, ...opponentActivePokemon];
     const teamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
     const zMoveHasBeenUsed = battleState.zMoveUsed?.[teamId] || false;
-    const crystalData = pokemon.heldItem ? Z_CRYSTAL_MAP[pokemon.heldItem.name.toLowerCase().replace(/\s/g, '-')] : null;
+    const crystalData = pokemon.heldItem ? Z_CRYSTAL_MAP[pokemon.heldItem.id] : null;
 
     const canUseZMove = !zMoveHasBeenUsed && crystalData &&
         ((crystalData.type && pokemon.moves.some(move => move.type === crystalData.type && move.damage_class.name !== 'status')) ||
@@ -91,7 +91,7 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
         !p.fainted &&
         p.originalTrainerId === pokemon.originalTrainerId
     );
-    const isTrapped = pokemon.volatileStatuses?.some(s => s.name === 'Trapped') && pokemon.heldItem?.name.toLowerCase() !== 'shed shell';
+    const isTrapped = pokemon.volatileStatuses?.some(s => s.name === 'Trapped') && pokemon.heldItem?.id !== 'shed-shell';
 
     const renderTransformChoice = () => {
         if (!showTransformChoice || availableTransforms.length === 0) return null;
@@ -115,8 +115,8 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
         if (form.triggerMove && pokemon.speciesName === 'rayquaza') {
             return pokemon.moves.some(m => m.name.toLowerCase() === form.triggerMove.toLowerCase());
         }
-        if (form.triggerItem && pokemon.heldItem?.name) {
-            return form.triggerItem.toLowerCase() === pokemon.heldItem.name.toLowerCase();
+        if (form.triggerItem && pokemon.heldItem?.id) {
+            return form.triggerItem.toLowerCase().replace(/\s/g, '-') === pokemon.heldItem.id;
         }
         return false;
     });
@@ -156,7 +156,7 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                     const showApplyEffectCheckbox = (selectedMove?.meta?.ailment?.name !== 'none' && selectedMove?.meta?.ailment_chance > 0) || (selectedMove?.effects?.length > 0);
                     const showCritCheckbox = selectedMove && selectedMove.power > 0;
                     const showWillHitCheckbox = selectedMove && selectedMove.accuracy !== null;
-                    const attackerHoldsFlinchItem = ['kings-rock', 'razor-fang'].includes(pokemon.heldItem?.name.toLowerCase());
+                    const attackerHoldsFlinchItem = ['kings-rock', 'razor-fang'].includes(pokemon.heldItem?.id);
                     const showFlinchCheckbox = selectedMove && selectedMove.power > 0 && attackerHoldsFlinchItem;
                     const isConfused = pokemon.volatileStatuses.includes('Confused');
                     const showConfusionOptions = isConfused && queuedAction;
@@ -164,8 +164,8 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                     const showInfatuationOptions = isInfatuated && queuedAction;
                     const moveHitData = selectedMove && MULTI_HIT_MOVES.get(selectedMove.name.toLowerCase());
                     const showMultiHitControl = !!moveHitData;
-                    const holdsLoadedDice = pokemon.heldItem?.name.toLowerCase() === 'loaded-dice';
-                    const holdsQuickClaw = pokemon.heldItem?.name.toLowerCase() === 'quick-claw';
+                    const holdsLoadedDice = pokemon.heldItem?.id === 'loaded-dice';
+                    const holdsQuickClaw = pokemon.heldItem?.id === 'quick-claw';
                     const showQuickClawCheckbox = holdsQuickClaw && queuedAction;
                     const opponentTeam = battleState.teams.find(t => t.id !== teamId);
                     const validTargets = opponentTeam?.pokemon.filter(p => p && !p.fainted) || [];

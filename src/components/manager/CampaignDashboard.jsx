@@ -4,7 +4,7 @@ import InviteModal from './InviteModal';
 import DeleteCampaignModal from './DeleteCampaignModal'; // <-- Add this
 import { deleteCampaignAndSubcollections } from '../../utils/firebaseUtils';
 import { db } from '../../config/firebase';
-import { doc, collection, query, where, getDocs, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, updateDoc, arrayUnion, arrayRemove, serverTimestamp, addDoc } from 'firebase/firestore';
 import MemberManagementModal from './MemberManagementModal';
 import CampaignSettingsModal from './CampaignSettingsModal';
 
@@ -14,6 +14,7 @@ const CampaignDashboard = ({ campaigns, dispatch, user }) => {
     const [editingCampaign, setEditingCampaign] = useState(null);
     const [managingMembersOf, setManagingMembersOf] = useState(null);
     const [joinCode, setJoinCode] = useState('');
+    const [newCampaignName, setNewCampaignName] = useState('');
 
     const myCampaigns = campaigns.filter(c => c.role === 'DM');
     const joinedCampaigns = campaigns.filter(c => c.role === 'TRAINER');
@@ -96,6 +97,40 @@ const CampaignDashboard = ({ campaigns, dispatch, user }) => {
         if (!editingCampaign) return;
         const campaignRef = doc(db, 'campaigns', editingCampaign.id);
         await updateDoc(campaignRef, { defaultPermissions: newPermissions });
+
+    };
+    const handleCreateCampaign = async (e) => {
+        e.preventDefault();
+        if (!newCampaignName.trim() || !user?.uid) return;
+        dispatch({ type: 'SET_LOADING', payload: 'Creating Campaign...' });
+        try {
+            const campaignsRef = collection(db, 'campaigns');
+            const newCampaign = {
+                name: newCampaignName,
+                ownerId: user.uid,
+                createdAt: serverTimestamp(),
+                members: [],
+                defaultPermissions: {
+                    canViewRoster: true,
+                    canViewBox: true,
+                    canViewBag: true,
+                    canEditNicknames: true,
+                    canLevelUp: false,
+                    canChangeMovesets: false,
+                    canUseItems: true,
+                    canOrganizeBox: true,
+                    canRenameBoxes: true,
+                    partyLevel: 5,
+                }
+            };
+            const docRef = await addDoc(campaignsRef, newCampaign);
+            dispatch({ type: 'SELECT_CAMPAIGN', payload: docRef.id });
+            setNewCampaignName('');
+        } catch (error) {
+            dispatch({ type: 'SET_ERROR', payload: `Failed to create campaign: ${error.message}` });
+        } finally {
+            dispatch({ type: 'SET_LOADING', payload: null });
+        }
     };
     return (
         <div>
@@ -132,6 +167,25 @@ const CampaignDashboard = ({ campaigns, dispatch, user }) => {
             {/* DM View */}
             <div className="mb-12">
                 <h2 className="text-3xl font-bold text-indigo-400 border-b-2 border-gray-700 pb-2 mb-4">My Campaigns (DM)</h2>
+                {/* Campaign Creation Form */}
+                <div className="mb-8 p-6 bg-gray-800/60 rounded-lg shadow-md">
+                    <form onSubmit={handleCreateCampaign} className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                        <input
+                            type="text"
+                            value={newCampaignName}
+                            onChange={e => setNewCampaignName(e.target.value)}
+                            placeholder="New Campaign Name"
+                            className="flex-grow bg-gray-900 p-2 rounded-md border border-gray-600"
+                        />
+                        <button
+                            type="submit"
+                            className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md font-semibold text-lg"
+                        >
+                            Create Campaign
+                        </button>
+                    </form>
+                </div>
+                {/* End Campaign Creation Form */}
                 {myCampaigns.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {myCampaigns.map(campaign => (

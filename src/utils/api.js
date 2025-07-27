@@ -3,6 +3,40 @@ import { getEffectiveAbility, getStatModifier } from '../hooks/battle-engine/bat
 import { POKEAPI_BASE_URL } from '../config/gameData';
 import { officialFormsData } from '../config/officialFormsData';
 
+/**
+ * @typedef {Object} Stats
+ * @property {number} hp
+ * @property {number} attack
+ * @property {number} defense
+ * @property {number} special-attack
+ * @property {number} special-defense
+ * @property {number} speed
+ */
+
+/**
+ * @typedef {Object} Pokemon
+ * @property {string} id - The unique ID for this instance of the Pokémon.
+ * @property {string} name - The display name (e.g., "Charizard").
+ * @property {number} level
+ * @property {{id: string, name: string}} ability
+ * @property {Array<{id: string, name: string}>} abilities
+ * @property {{id: string, name: string} | null} heldItem
+ * @property {string} status
+ * @property {string[]} types
+ * @property {any[]} moves
+ * @property {Stats} stats - The calculated stats for the current level.
+ * @property {Stats} baseStats - The base stats from the API.
+ * @property {object} stat_stages
+ * @property {any[]} volatileStatuses
+ * @property {number} maxHp
+ * @property {number} currentHp
+ * @property {boolean} fainted
+ */
+const toTitleCase = (str) => {
+    if (!str) return '';
+    return str.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+};
+
 const BASE_FORM_MAP = {
     'darmanitan-galar': 'darmanitan-galar-standard',
     'darmanitan': 'darmanitan-standard',
@@ -22,11 +56,12 @@ export async function fetchItemData(itemName) {
         const response = await fetch(`${POKEAPI_BASE_URL}item/${itemKey}/`);
         if (!response.ok) {
             console.warn(`Item "${itemName}" not found.`);
-            return { name: itemName, sprite: null, category: 'unknown', effect_entries: [] };
+            return { name: toTitleCase(itemName), id: itemKey, sprite: null, category: 'unknown', effect_entries: [] };
         }
         const data = await response.json();
         const result = {
-            name: data.name.replace(/-/g, ' '),
+            name: toTitleCase(data.name),
+            id: data.name, // The functional, hyphenated ID from the API
             sprite: data.sprites.default,
             category: data.category.name.replace(/-/g, ' '),
             effect_entries: data.effect_entries
@@ -35,67 +70,54 @@ export async function fetchItemData(itemName) {
         return result;
     } catch (error) {
         console.error(error);
-        return { name: itemName, sprite: null, category: 'unknown', effect_entries: [] };
+        return { name: toTitleCase(itemName), id: itemKey, sprite: null, category: 'unknown', effect_entries: [] };
     }
 }
-export const getAccuracyEvasionModifier = (stage) => {
-    const multipliers = {
-        '6': 3,    // 9/3
-        '5': 2.66, // 8/3
-        '4': 2.33, // 7/3
-        '3': 2,    // 6/3
-        '2': 1.66, // 5/3
-        '1': 1.33, // 4/3
-        '0': 1,
-        '-1': 0.75, // 3/4
-        '-2': 0.6,  // 3/5
-        '-3': 0.5,  // 3/6
-        '-4': 0.43, // 3/7
-        '-5': 0.36, // 3/8
-        '-6': 0.33  // 3/9
-    };
-    return multipliers[stage] || 1;
-};
 
+const moveDataCache = new Map();
+export async function fetchMoveData(moveName) {
+    if (!moveName) return null;
+    const moveKey = moveName.toLowerCase().replace(/\s/g, '-');
+    if (moveDataCache.has(moveKey)) { return moveDataCache.get(moveKey); }
+    try {
+        const response = await fetch(`${POKEAPI_BASE_URL}move/${moveKey}/`);
+        if (!response.ok) throw new Error(`Move "${moveName}" not found.`);
+        const data = await response.json();
 
+        const englishEffectEntry = data.effect_entries.find(e => e.language.name === 'en') || { short_effect: 'No description available.' };
 
-
-// Add this main calculation function to api.js
-export const calculateHitChance = (attacker, defender, move, battleState) => {
-    // Moves that never miss (e.g., Aerial Ace)
-    if (move.accuracy === null) return 100;
-
-    let accuracy = move.accuracy;
-    const attackerAbility = getEffectiveAbility(attacker)?.toLowerCase();
-    const defenderAbility = getEffectiveAbility(defender)?.toLowerCase();
-    const attackerItem = attacker.heldItem?.name.toLowerCase();
-    const defenderItem = defender.heldItem?.name.toLowerCase();
-
-    // Step 1: Stat Stages (Accuracy vs. Evasion)
-    const accuracyStage = attacker.stat_stages.accuracy;
-    const evasionStage = defender.stat_stages.evasion;
-    const stageMultiplier = getAccuracyEvasionModifier(accuracyStage - evasionStage);
-    accuracy *= stageMultiplier;
-
-    // Step 2: Ability Effects
-    if (attackerAbility === 'compound-eyes') accuracy *= 1.3;
-    if (defenderAbility === 'sand-veil' && battleState.field.weather === 'sandstorm') accuracy *= 0.8;
-    if (defenderAbility === 'snow-cloak' && battleState.field.weather === 'snow') accuracy *= 0.8;
-    if (defenderAbility === 'tangled-feet' && attacker.volatileStatuses.some(s => (s.name || s) === 'Confused')) accuracy *= 0.5;
-
-    // Step 3: Item Effects
-    if (attackerItem === 'wide-lens') accuracy *= 1.1;
-    if (defenderItem === 'bright-powder') accuracy *= 0.9;
-
-    // Zoom Lens requires a speed check
-    const attackerSpeed = calculateStat(attacker.stats.speed, attacker.level) * getStatModifier(attacker.stat_stages.speed);
-    const defenderSpeed = calculateStat(defender.stats.speed, defender.level) * getStatModifier(defender.stat_stages.speed);
-    if (attackerItem === 'zoom-lens' && attackerSpeed < defenderSpeed) {
-        accuracy *= 1.2;
+        const moveData = {
+            name: toTitleCase(data.name),
+            id: data.name, // The functional, hyphenated ID
+            type: data.type.name,
+            damage_class: data.damage_class.name,
+            power: data.power || 0,
+            accuracy: data.accuracy || 100,
+            pp: data.pp,
+            target: data.target,
+            effect_entries: [englishEffectEntry],
+            meta: data.meta,
+            stat_changes: data.stat_changes,
+            effects: [],
+            isOverride: true,
+        };
+        moveDataCache.set(moveKey, moveData);
+        return moveData;
+    } catch (error) {
+        console.error(error);
+        throw error;
     }
+}
 
-    return Math.round(Math.min(100, accuracy));
-};
+/**
+ * Fetches and constructs a complete Pokémon object.
+ * @param {string} name - The name of the Pokémon to fetch.
+ * @param {number} [level=50] - The level of the Pokémon.
+ * @param {string} [heldItemName=''] - The name of the held item.
+ * @param {Array} [customMovesList=[]] - A list of custom moves.
+ * @returns {Promise<Pokemon>} - A promise that resolves to a complete Pokémon object.
+ */
+
 const pokemonDataCache = new Map();
 export async function fetchPokemonData(name, level = 50, heldItemName = '', customMovesList = []) {
     let pokeKey = name.toLowerCase().replace(/\s/g, '-');
@@ -123,21 +145,18 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
 
     const itemPromise = fetchItemData(heldItemName);
     const abilityPromises = pokeData.abilities.map(a => fetch(a.ability.url).then(res => res.json()));
-
     const allLearnableMoveNames = [...new Set(pokeData.moves.map(m => m.move.name.replace(/-/g, ' ')))];
 
-    // --- THIS IS THE CORRECTED, SAFER SORTING LOGIC ---
     const defaultMoveSetNames = pokeData.moves
         .filter(m => m.version_group_details.some(d => d.move_learn_method.name === 'level-up'))
         .sort((a, b) => {
             const detailA = a.version_group_details.find(d => d.move_learn_method.name === 'level-up');
             const detailB = b.version_group_details.find(d => d.move_learn_method.name === 'level-up');
-            // Safely get the level, defaulting to 0 if not found
             const levelA = detailA ? detailA.level_learned_at : 0;
             const levelB = detailB ? detailB.level_learned_at : 0;
             return levelB - levelA;
         })
-        .slice(0, 4)
+        .slice(0, 1)
         .map(m => m.move.name.replace(/-/g, ' '));
 
     const movePromises = defaultMoveSetNames.map(async (moveName) => {
@@ -156,10 +175,14 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     ]);
 
     const heldItem = itemResult;
-    // Filter out rejected promises and get the fulfilled values
-    const fullAbilities = abilityResults.filter(r => r.status === 'fulfilled').map(r => r.value);
+    const fullAbilities = abilityResults
+        .filter(r => r.status === 'fulfilled')
+        .map(r => ({
+            ...r.value,
+            name: toTitleCase(r.value.name), // Display Name
+            id: r.value.name // Functional ID
+        }));
     const moves = moveResults.filter(r => r.status === 'fulfilled').map(r => r.value);
-
     const baseStats = Object.fromEntries(pokeData.stats.map(s => [s.stat.name, s.base_stat]));
     const types = pokeData.types.map(t => t.type.name);
     const newMaxHp = calculateStat(baseStats.hp, level, true);
@@ -169,19 +192,26 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     let formLookupKey = speciesName;
     if (formLookupKey.includes('-')) {
         const baseName = formLookupKey.split('-')[0];
-        // If the base name (e.g., "darmanitan") exists as a key, use it.
         if (officialFormsData[baseName]) {
             formLookupKey = baseName;
         }
     }
     const forms = officialFormsData[formLookupKey] || [];
-
+    const defaultAbility = fullAbilities.find(a => !a.is_hidden) || fullAbilities[0] || null;
+    const stats = {
+        hp: newMaxHp,
+        attack: calculateStat(baseStats.attack, level),
+        defense: calculateStat(baseStats.defense, level),
+        'special-attack': calculateStat(baseStats['special-attack'], level),
+        'special-defense': calculateStat(baseStats['special-defense'], level),
+        speed: calculateStat(baseStats.speed, level),
+    };
     return {
-        id: crypto.randomUUID(),
+        id: `${pokeKey}-${Math.random().toString(36).substring(2, 9)}`,
         pokeApiId: pokeData.id,
-        name: speciesIdentifier.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+        name: toTitleCase(speciesIdentifier), // Display Name
+        id: speciesIdentifier, // Functional ID
         speciesName: speciesName,
-        speciesIdentifier: speciesIdentifier,
         level,
         gender: defaultGender,
         sprites: {
@@ -192,15 +222,16 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
         },
         sprite: pokeData.sprites.front_default,
         shinySprite: pokeData.sprites.front_shiny,
+        stats: stats,
         baseStats,
         currentHp: newMaxHp,
         maxHp: newMaxHp,
         moves: moves.map(m => ({ ...m, pp: m.maxPp })),
         allMoveNames: allLearnableMoveNames,
         types,
-        abilities: fullAbilities.map(a => ({ ...a, name: a.name.replace(/-/g, ' ') })),
-        ability: (fullAbilities.find(a => !a.is_hidden)?.name || fullAbilities[0]?.name || '').replace(/-/g, ' '),
-        heldItem: heldItem,
+        abilities: fullAbilities,
+        ability: defaultAbility, // This is now an object: { name, id }
+        heldItem: heldItem, // This is now an object: { name, id }
         status: 'None',
         volatileStatuses: [],
         fainted: false,
@@ -221,39 +252,47 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     };
 }
 
-const moveDataCache = new Map();
-export async function fetchMoveData(moveName) {
-    if (!moveName) return null;
-    const moveKey = moveName.toLowerCase().replace(/\s/g, '-');
-    if (moveDataCache.has(moveKey)) { return moveDataCache.get(moveKey); }
-    try {
-        const response = await fetch(`${POKEAPI_BASE_URL}move/${moveKey}/`);
-        if (!response.ok) throw new Error(`Move "${moveName}" not found.`);
-        const data = await response.json();
+export const getAccuracyEvasionModifier = (stage) => {
+    const multipliers = {
+        '6': 3, '5': 2.66, '4': 2.33, '3': 2, '2': 1.66, '1': 1.33,
+        '0': 1, '-1': 0.75, '-2': 0.6, '-3': 0.5, '-4': 0.43, '-5': 0.36, '-6': 0.33
+    };
+    return multipliers[stage] || 1;
+};
 
-        const englishEffectEntry = data.effect_entries.find(e => e.language.name === 'en') || { short_effect: 'No description available.' };
+// Add this main calculation function to api.js
+export const calculateHitChance = (attacker, defender, move, battleState) => {
+    if (move.accuracy === null) return 100;
 
-        const moveData = {
-            name: data.name.replace(/-/g, ' '),
-            type: data.type.name,
-            damage_class: data.damage_class.name,
-            power: data.power || 0,
-            accuracy: data.accuracy || 100,
-            pp: data.pp,
-            target: data.target,
-            effect_entries: [englishEffectEntry],
-            meta: data.meta,
-            stat_changes: data.stat_changes,
-            effects: [],
-            isOverride: true,
-        };
-        moveDataCache.set(moveKey, moveData);
-        return moveData;
-    } catch (error) {
-        console.error(error);
-        throw error;
+    let accuracy = move.accuracy;
+    // --- CORRECTED: Use the .id property for all logic ---
+    const attackerAbilityId = getEffectiveAbility(attacker, battleState)?.id;
+    const defenderAbilityId = getEffectiveAbility(defender, battleState)?.id;
+    const attackerItemId = attacker.heldItem?.id;
+    const defenderItemId = defender.heldItem?.id;
+
+    const accuracyStage = attacker.stat_stages.accuracy;
+    const evasionStage = defender.stat_stages.evasion;
+    const stageMultiplier = getAccuracyEvasionModifier(accuracyStage - evasionStage);
+    accuracy *= stageMultiplier;
+
+    // --- CORRECTED: All checks now use the functional ID ---
+    if (attackerAbilityId === 'compound-eyes') accuracy *= 1.3;
+    if (defenderAbilityId === 'sand-veil' && battleState.field.weather === 'sandstorm') accuracy *= 0.8;
+    if (defenderAbilityId === 'snow-cloak' && battleState.field.weather === 'snow') accuracy *= 0.8;
+    if (defenderAbilityId === 'tangled-feet' && attacker.volatileStatuses.some(s => (s.name || s) === 'Confused')) accuracy *= 0.5;
+
+    if (attackerItemId === 'wide-lens') accuracy *= 1.1;
+    if (defenderItemId === 'bright-powder') accuracy *= 0.9;
+
+    const attackerSpeed = calculateStat(attacker.stats.speed, attacker.level) * getStatModifier(attacker.stat_stages.speed);
+    const defenderSpeed = calculateStat(defender.stats.speed, defender.level) * getStatModifier(defender.stat_stages.speed);
+    if (attackerItemId === 'zoom-lens' && attackerSpeed < defenderSpeed) {
+        accuracy *= 1.2;
     }
-}
+
+    return Math.round(Math.min(100, accuracy));
+};
 
 export const getSprite = (pokemon) => {
     if (!pokemon) return '';
@@ -279,34 +318,32 @@ export const calculateStat = (base, level, isHp = false) => {
 export const calculateCritStage = (pokemon, move, highCritRateMovesSet) => {
     let stage = 0;
 
-    // Check for high crit-rate moves
-    if (highCritRateMovesSet.has(move.name.toLowerCase().replace(/\s/g, '-'))) {
+    // --- CORRECTED: Use the move's ID for the lookup ---
+    if (highCritRateMovesSet.has(move.id)) {
         stage += 1;
     }
 
-    // Check for abilities like Super Luck
-    if (getEffectiveAbility(pokemon)?.toLowerCase() === 'super luck') {
+    if (getEffectiveAbility(pokemon)?.id === 'super-luck') {
         stage += 1;
     }
 
-    // Check for held items that boost crit rate
-    const heldItemName = pokemon.heldItem?.name.toLowerCase();
-    if (heldItemName === 'scope lens' || heldItemName === 'razor claw') {
+    // --- CORRECTED: Use the item's ID for all checks ---
+    const heldItemId = pokemon.heldItem?.id;
+    if (heldItemId === 'scope-lens' || heldItemId === 'razor-claw') {
         stage += 1;
     }
-    // Check for species-specific crit items
-    if (heldItemName === 'stick' && pokemon.name.toLowerCase().includes('farfetch')) {
+    
+    // --- CORRECTED: Use the Pokémon's ID for species-specific checks ---
+    if (heldItemId === 'stick' && pokemon.id.includes('farfetchd')) { // Note: 'farfetchd' is the API name
         stage += 2;
     }
-    if (heldItemName === 'lucky punch' && pokemon.name.toLowerCase() === 'chansey') {
+    if (heldItemId === 'lucky-punch' && pokemon.id === 'chansey') {
         stage += 2;
     }
 
-    // Check for volatile statuses like Focus Energy
     if (pokemon.volatileStatuses?.includes('High Crit-Rate')) {
         stage += 2;
     }
 
-    // Return the final stage, capped at 3 (which is 100%)
     return Math.min(stage, 3);
 };

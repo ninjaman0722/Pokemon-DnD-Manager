@@ -4,8 +4,8 @@ import React, { useState, useEffect, useReducer, useRef } from 'react';
 import { ManagerContext } from './context/ManagerContext';
 import { onSnapshot, collection, addDoc, serverTimestamp, query, where, getDoc, doc } from 'firebase/firestore';
 import { auth, db } from './config/firebase';
-import TrainerManager from './components/manager/TrainerManager';
-import BattleSetup from './components/manager/BattleSetup';
+import TrainerManager from './components/campaign-manager/TrainerManager'
+import BattleSetup from './components/campaign-manager/BattleSetup';
 import { POKEAPI_BASE_URL } from './config/gameData';
 import { officialFormsData } from './config/officialFormsData';
 import CampaignDashboard from './components/manager/CampaignDashboard';
@@ -70,7 +70,6 @@ function appReducer(state, action) {
 // Main App Component - now receives 'user' as a prop from ProtectedRoute
 function ManagerApp({ user }) {
     const [state, dispatch] = useReducer(appReducer, initialState);
-    const [newCampaignName, setNewCampaignName] = useState('');
     const dataListeners = useRef([]); // To hold our Firestore listeners
 
     // --- NEW ---
@@ -255,42 +254,6 @@ function ManagerApp({ user }) {
         combineData();
     }, [state.pokemonList, state.itemList, state.moveList, state.abilityList, state.customPokemon, state.customMoves, state.customAbilities]);
 
-    // --- NEW ---
-    // Function to handle creating a new campaign
-    const handleCreateCampaign = async (e) => {
-        e.preventDefault();
-        if (!newCampaignName.trim() || !state.user?.uid) return;
-        dispatch({ type: 'SET_LOADING', payload: 'Creating Campaign...' });
-        try {
-            const campaignsRef = collection(db, 'campaigns');
-            const newCampaign = {
-                name: newCampaignName,
-                ownerId: state.user.uid,
-                createdAt: serverTimestamp(),
-                members: [],
-                defaultPermissions: {
-                    canViewRoster: true,
-                    canViewBox: true,
-                    canViewBag: true,
-                    canEditNicknames: true,
-                    canLevelUp: false,
-                    canChangeMovesets: false,
-                    canUseItems: true,
-                    canOrganizeBox: true,
-                    canRenameBoxes: true,
-                    partyLevel: 5,
-                }
-            };
-            const docRef = await addDoc(campaignsRef, newCampaign);
-            dispatch({ type: 'SELECT_CAMPAIGN', payload: docRef.id }); // Automatically select the new campaign
-            setNewCampaignName('');
-        } catch (error) {
-            dispatch({ type: 'SET_ERROR', payload: `Failed to create campaign: ${error.message}` });
-        } finally {
-            dispatch({ type: 'SET_LOADING', payload: null });
-        }
-    };
-
     const renderView = () => {
         switch (state.view) {
             case 'CAMPAIGN_DASHBOARD':
@@ -356,13 +319,7 @@ function ManagerApp({ user }) {
                     </div>
                     <div className={`transition-opacity duration-300 ${state.loading ? 'opacity-20' : 'opacity-100'}`}>
                         {/* Campaign Creation Form */}
-                        <div className="mb-8 p-6 bg-gray-800/60 rounded-lg shadow-md">
-                            <h2 className="text-2xl font-semibold mb-4 border-b border-gray-600 pb-2">My Campaigns</h2>
-                            <form onSubmit={handleCreateCampaign} className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                                <input type="text" value={newCampaignName} onChange={e => setNewCampaignName(e.target.value)} placeholder="New Campaign Name" className="flex-grow bg-gray-900 p-2 rounded-md border border-gray-600" />
-                                <button type="submit" className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md font-semibold text-lg">Create Campaign</button>
-                            </form>
-                        </div>
+
 
                         {renderView()}
                     </div>

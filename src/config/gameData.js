@@ -145,34 +145,85 @@ export const API_AILMENT_TO_STATUS_MAP = {
 export const SPECIAL_EFFECT_MOVES = new Set([
     'curse', 'leech seed', 'taunt', 'encore', 'embargo', 'foresight', 'odor sleuth', 'perish song', 'nightmare'
 ]);
-
+export const GUARANTEED_CRIT_MOVES = new Set(['frost-breath', 'storm-throw']);
 export const PROTECTIVE_MOVES = new Set(['protect', 'detect']);
 export const CONSECUTIVE_TURN_MOVES = new Set(['outrage', 'petal-dance', 'thrash']);
 export const HIGH_CRIT_RATE_MOVES = new Set(['slash', 'stone-edge', 'leaf-blade', 'night-slash', 'psycho-cut', 'shadow-claw', 'crabhammer', 'cross-chop', 'aeroblast', 'air-cutter', 'drill-run', 'karate-chop', 'poison-tail', 'razor-leaf', 'razor-wind', 'sky-attack', 'spacial-rend']);
 export const TWO_TURN_MOVES = new Set(['fly', 'dig', 'dive', 'phantom-force', 'shadow-force', 'solar-beam', 'sky-attack', 'razor-wind']);
 export const INVULNERABLE_DURING_CHARGE = new Set(['fly', 'dig', 'dive', 'phantom-force', 'shadow-force']);
 export const BINDING_MOVES = new Set(['bind', 'clamp', 'fire-spin', 'infestation', 'magma-storm', 'sand-tomb', 'snap-trap', 'thunder-cage', 'whirlpool', 'wrap']);
+export const SELF_STAT_LOWERING_MOVES = new Map([
+    // Special Attack -2
+    ['draco-meteor', [{ stat: 'special-attack', change: -2 }]],
+    ['leaf-storm', [{ stat: 'special-attack', change: -2 }]],
+    ['overheat', [{ stat: 'special-attack', change: -2 }]],
+    ['fleur-cannon', [{ stat: 'special-attack', change: -2 }]],
+    ['psycho-boost', [{ stat: 'special-attack', change: -2 }]],
 
+    // Defenses -1
+    ['close-combat', [{ stat: 'defense', change: -1 }, { stat: 'special-defense', change: -1 }]],
+    ['shell-smash', [{ stat: 'defense', change: -1 }, { stat: 'special-defense', change: -1 }, { stat: 'attack', change: 2 }, { stat: 'special-attack', change: 2 }, { stat: 'speed', change: 2 }]], // Also boosts offenses/speed
+
+    // Attack & Defense -1
+    ['superpower', [{ stat: 'attack', change: -1 }, { stat: 'defense', change: -1 }]],
+
+    // Speed -1
+    ['hammer-arm', [{ stat: 'speed', change: -1 }]],
+    ['ice-hammer', [{ stat: 'speed', change: -1 }]],
+
+    // Multiple Stats -1
+    ['v-create', [{ stat: 'defense', change: -1 }, { stat: 'special-defense', change: -1 }, { stat: 'speed', change: -1 }]],
+]);
 export const CONTACT_MOVES = new Set([
-    'absorb', 'accelerock', 'aqua-cutter', 'aqua-step', 'arm-thrust', 'astonish',
-    'axe-kick', 'barb-barrage', 'bounce', 'body-press', 'body-slam', 'bolt-beak',
-    'branch-poke', 'brick-break', 'brutal-swing', 'bug-bite', 'burn-up',
-    'ceaseless-edge', 'chip-away', 'circle-throw', 'close-combat', 'comet-punch',
-    'counter', 'covet', 'crabhammer', 'cross-chop', 'crunch', 'crush-claw',
-    'cut', 'darkest-lariet', 'dire-claw', 'dizzy-punch', 'double-hit',
-    'double-kick', 'double-slap', 'dragon-claw', 'dragon-hammer', 'dragon-rush',
-    'dragon-tail', 'drain-punch', 'drill-peck', 'dual-chop', 'dual-wingbeat',
-    'dynamic-punch', 'endeavor', 'facade', 'fake-out', 'false-surrender',
-    'feint-attack', 'feral-pounce', 'fire-fang', 'fire-lash', 'fire-punch',
-    'first-impression', 'fishious-rend', 'flail', 'flame-charge', 'flame-wheel',
-    'flare-blitz', 'flip-turn', 'floaty-fall', 'fly', 'flying-press',
-    'focus-punch', 'force-palm', 'foul-play', 'frost-breath', 'fury-attack',
-    'fury-cutter', 'fury-swipes', 'gear-grind', 'gigaton-hammer', 'grass-knot',
-    'grassy-glide', 'guillotine', 'gyro-ball', 'hammer-arm', 'head-charge',
-    'headbutt', 'headlong-rush', 'heat-crash', 'heavy-slam', 'high-horsepower',
-    'high-jump-kick', 'horn-attack', 'horn-drill', 'horn-leech', 'ice-ball',
-    'ice-fang', 'ice-hammer', 'ice-punch', 'ice-spinner', 'icicle-crash',
-    'icicle-spear', 'infernal-parade', 'iron-head', 'jet-punch', 'jump-kick',
+    'absorb', 'accelerock', 'acrobatics', 'aerial-ace', 'anchor-shot',
+    'aqua-cutter', 'aqua-step', 'aqua-tail', 'arm-thrust', 'assurance',
+    'astonish', 'attack-order', 'axe-kick', 'barb-barrage', 'behemoth-bash',
+    'behemoth-blade', 'bide', 'bind', 'bite', 'blaze-kick',
+    'body-press', 'body-slam', 'bolt-beak', 'bolt-strike', 'bounce',
+    'branch-poke', 'brave-bird', 'brick-break', 'brutal-swing', 'bug-bite',
+    'bulldoze', 'bullet-punch', 'burn-up', 'ceaseless-edge', 'chip-away',
+    'circle-throw', 'clamp', 'close-combat', 'collision-course', 'comet-punch',
+    'constrict', 'counter', 'covet', 'crabhammer', 'cross-chop', 'cross-poison',
+    'crunch', 'crush-claw', 'crush-grip', 'cut', 'darkest-lariet',
+    'diamond-storm', 'dire-claw', 'dive', 'dizzy-punch', 'double-edge',
+    'double-hit', 'double-iron-bash', 'double-kick', 'double-slap', 'dragon-breath',
+    'dragon-claw', 'dragon-hammer', 'dragon-rush', 'dragon-tail', 'drain-punch',
+    'drill-peck', 'drill-run', 'dual-chop', 'dual-wingbeat', 'dynamic-punch',
+    'electro-drift', 'endeavor', 'facade', 'fake-out', 'false-surrender',
+    'feint', 'feint-attack', 'feral-pounce', 'fire-fang', 'fire-lash',
+    'fire-punch', 'first-impression', 'fishious-rend', 'flail', 'flame-charge',
+    'flame-wheel', 'flare-blitz', 'flip-turn', 'floaty-fall', 'fly',
+    'flying-press', 'focus-punch', 'force-palm', 'foul-play', 'fury-attack',
+    'fury-cutter', 'fury-swipes', 'fusion-bolt', 'gear-grind', 'gigaton-hammer',
+    'grass-knot', 'grassy-glide', 'guillotine', 'gyro-ball', 'hammer-arm',
+    'head-charge', 'headbutt', 'headlong-rush', 'heat-crash', 'heavy-slam',
+    'high-horsepower', 'high-jump-kick', 'horn-attack', 'horn-drill', 'horn-leech',
+    'ice-ball', 'ice-fang', 'ice-hammer', 'ice-punch', 'ice-spinner',
+    'icicle-crash', 'icicle-spear', 'infernal-parade', 'iron-head', 'jet-punch',
+    'jump-kick', 'karate-chop', 'kowtow-cleave', 'last-resort', 'lunge',
+    'leaf-blade', 'leech-life', 'lick', 'liquidation', 'low-kick', 'low-sweep',
+    'mach-punch', 'megahorn', 'mega-kick', 'mega-punch', 'metal-claw', 'meteor-mash',
+    'mortal-spin', 'mountain-gale', 'needle-arm', 'nuzzle', 'outrage',
+    'payback', 'pay-day', 'peck', 'petal-dance', 'phantom-force', 'plasma-fists',
+    'play-rough', 'pluck', 'poison-fang', 'poison-jab', 'poison-sting',
+    'poison-tail', 'pounce', 'pound', 'power-trip', 'power-up-punch', 'power-whip',
+    'pursuit', 'quick-attack', 'rage', 'rage-fist', 'raging-bull', 'raging-fury',
+    'rapid-spin', 'razor-shell', 'retaliate', 'revenge', 'reversal', 'rock-climb',
+    'rock-smash', 'rolling-kick', 'rollout', 'sacred-sword', 'salt-cure',
+    'scratch', 'secret-sword', 'seed-bomb', 'seismic-toss', 'shadow-claw',
+    'shadow-punch', 'shadow-sneak', 'shadow-strike', 'shell-side-arm', 'skitter-smack',
+    'skull-bash', 'sky-attack', 'sky-drop', 'sky-uppercut', 'slam', 'slash',
+    'smart-strike', 'smelling-salts', 'solar-blade', 'spark', 'spiky-shield',
+    'spin-out', 'spirit-shackle', 'steel-roller', 'steel-wing', 'stomp',
+    'stomping-tantrum', 'stone-axe', 'storm-throw', 'strength', 'struggle',
+    'submission', 'sucker-punch', 'sunsteel-strike', 'super-fang', 'superpower',
+    'surging-strikes', 'tackle', 'tail-slap', 'take-down', 'thief',
+    'thousand-arrows', 'thousand-waves', 'thrash', 'throat-chop', 'thunder-fang',
+    'thunder-punch', 'thunderous-kick', 'tickle', 'triple-axel', 'triple-dive',
+    'triple-kick', 'trop-kick', 'twin-needle', 'u-turn', 'upper-hand', 'v-create',
+    'vice-grip', 'vine-whip', 'vital-throw', 'volt-tackle', 'wake-up-slap',
+    'waterfall', 'wave-crash', 'wicked-blow', 'wild-charge', 'wing-attack',
+    'wood-hammer', 'wrap', 'wring-out', 'x-scissor', 'zen-headbutt', 'zing-zap'
 ]);
 export const REFLECTABLE_MOVES = new Set([
     'stealth-rock', 'spikes', 'toxic-spikes', 'sticky-web', 'toxic',

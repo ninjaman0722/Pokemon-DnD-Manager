@@ -9,7 +9,7 @@ export const getEffectiveAbility = (pokemon, currentBattleState) => {
     if (currentBattleState) {
         const gasUser = currentBattleState.teams
             .flatMap(t => t.pokemon)
-            .find(p => p && !p.fainted && p.ability.toLowerCase() === 'neutralizing-gas');
+            .find(p => p && !p.fainted && p.ability?.id === 'neutralizing-gas');
 
         // If gas is active and this isn't the user of the gas, suppress the ability
         if (gasUser && gasUser.id !== pokemon.id) {
@@ -22,7 +22,7 @@ export const getEffectiveAbility = (pokemon, currentBattleState) => {
         return null;
     }
 
-    return pokemon.ability;
+    return pokemon.ability; // Return the full ability object { name, id }
 };
 
 export const getStatModifier = (stage) => {
@@ -31,39 +31,40 @@ export const getStatModifier = (stage) => {
 };
 
 export const isGrounded = (pokemon, currentBattleState) => {
-        // --- NEW GRAVITY CHECK ---
-        // If Gravity is active, every Pokémon is grounded. Period.
-        if (currentBattleState.field.gravityTurns > 0) {
-            return true;
-        }
-        if (pokemon.heldItem?.name.toLowerCase() === 'iron ball') {
-            return true;
-        }
-        // --- END NEW CHECK ---
-
-        // The rest of the logic only runs if Gravity is NOT active.
-        if (currentBattleState.field.magicRoomTurns === 0 && pokemon.heldItem?.name.toLowerCase() === 'air-balloon') {
-            return false;
-        }
-
-        if (pokemon.types.includes('flying')) return false;
-
-        const abilityName = getEffectiveAbility(pokemon, currentBattleState)?.toLowerCase();
-        if (abilityEffects[abilityName]?.onCheckImmunity?.({ type: 'ground' }, pokemon)) {
-            return false;
-        }
-
+    // If Gravity is active, every Pokémon is grounded.
+    if (currentBattleState.field.gravityTurns > 0) {
         return true;
-    };
+    }
+    // Check for Iron Ball using the new .id property
+    if (pokemon.heldItem?.id === 'iron-ball') {
+        return true;
+    }
+
+    // The rest of the logic only runs if Gravity is NOT active.
+    if (currentBattleState.field.magicRoomTurns === 0 && pokemon.heldItem?.id === 'air-balloon') {
+        return false;
+    }
+
+    if (pokemon.types.includes('flying')) return false;
+
+    // Get the ability's functional ID
+    const abilityId = getEffectiveAbility(pokemon, currentBattleState)?.id;
+    // Use the ID as a key for the abilityEffects lookup
+    if (abilityEffects[abilityId]?.onCheckImmunity?.({ type: 'ground' }, pokemon)) {
+        return false;
+    }
+
+    return true;
+};
 
 export const getActiveOpponents = (pokemon, currentBattleState) => {
-        const { teams, activePokemonIndices } = currentBattleState;
-        const pokemonTeam = teams.find(t => t.pokemon.some(p => p.id === pokemon.id));
-        if (!pokemonTeam) return [];
+    const { teams, activePokemonIndices } = currentBattleState;
+    const pokemonTeam = teams.find(t => t.pokemon.some(p => p.id === pokemon.id));
+    if (!pokemonTeam) return [];
 
-        const opponentTeam = teams.find(t => t.id !== pokemonTeam.id);
-        if (!opponentTeam) return [];
+    const opponentTeam = teams.find(t => t.id !== pokemonTeam.id);
+    if (!opponentTeam) return [];
 
-        const opponentActiveIndices = activePokemonIndices[opponentTeam.id] || [];
-        return opponentTeam.pokemon.filter((p, i) => opponentActiveIndices.includes(i) && p && !p.fainted);
-    };
+    const opponentActiveIndices = activePokemonIndices[opponentTeam.id] || [];
+    return opponentTeam.pokemon.filter((p, i) => opponentActiveIndices.includes(i) && p && !p.fainted);
+};
