@@ -594,15 +594,15 @@ export const abilityEffects = {
         }
     },
 
-    'justified': {
-        onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbilityId, statChanger) => {
-            if (move.type === 'dark' && damage > 0 && pokemon.stat_stages['attack'] < 6) {
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Justified raised its Attack!` });
-                statChanger(pokemon, 'attack', 1, newLog, battleState);
-            }
-            return damage;
+'justified': {
+    onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbilityId, statChanger) => {
+        if (move.type === 'dark' && damage > 0 && pokemon.stat_stages['attack'] < 6) {
+            newLog.push({ type: 'text', text: `${pokemon.name}'s Justified raised its Attack!` });
+            statChanger(pokemon, 'attack', 1, newLog, battleState);
         }
-    },
+        return damage;
+    }
+},
     'flash-fire': {
         onCheckImmunity: (move, pokemon, attackerAbilityId, newLog) => {
             if (move.type === 'fire') {
@@ -777,13 +777,21 @@ export const abilityEffects = {
         onEndOfTurn: (pokemon, battleState, newLog) => {
             if (pokemon.lastConsumedItem && !pokemon.heldItem && pokemon.lastConsumedItem.name.includes('berry')) {
                 const weather = battleState.field.weather;
-                const chance = (weather === 'sunshine' || weather === 'harsh-sunshine') ? 100 : 50;
+                const isSun = (weather === 'sunshine' || weather === 'harsh-sunshine');
+                const chance = isSun ? 100 : 50;
 
-                newLog.push({
-                    type: 'text',
-                    text: `${pokemon.name}'s Harvest might restore its ${pokemon.lastConsumedItem.name}! (DM: ${chance}% chance)`
-                });
-                pokemon.lastConsumedItem = null;
+                // This new check allows the test to force the ability to activate.
+                const willHarvest = battleState.dm?.willHarvest || (Math.random() * 100 < chance);
+
+                if (willHarvest) {
+                    const restoredItem = { ...pokemon.lastConsumedItem };
+                    pokemon.heldItem = restoredItem;
+                    pokemon.lastConsumedItem = null;
+                    newLog.push({
+                        type: 'text',
+                        text: `${pokemon.name} harvested another ${restoredItem.name}!`
+                    });
+                }
             }
         }
     },

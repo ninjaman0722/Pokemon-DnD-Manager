@@ -34,7 +34,7 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
         isCritical = true;
     }
     if (abilityEffects[defenderAbilityId]?.onCheckImmunity?.(moveForCalc, defender, attackerAbilityId, newLog, statChanger, currentBattleState)) {
-        return { damage: 0, effectiveness: 0 };
+        return { damage: 0, effectiveness: 0, move: moveForCalc };
     }
 
     if (abilityEffects[attackerAbilityId]?.onModifyMove) {
@@ -65,11 +65,11 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
 
     if (defenderAbilityId === 'wonder-guard' && initialEffectiveness <= 1) {
         newLog.push({ type: 'text', text: `${defender.name}'s Wonder Guard protected it!` });
-        return { damage: 0, effectiveness: 0 };
+        return { damage: 0, effectiveness: 0, move: moveForCalc };
     }
 
     if (move.power === null || move.power === 0) {
-        return { damage: 0, effectiveness: 1 };
+        return { damage: 0, effectiveness: 1, move: moveForCalc };
     }
     const attackStageKey = isSpecial ? 'special-attack' : 'attack';
     let defenseStageKey;
@@ -94,7 +94,6 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
             defenseStage = 0;
         }
     }
-    // --- END FIX ---
 
     if (defenderAbilityId === 'unaware') attackStage = 0;
     if (attackerAbilityId === 'unaware') defenseStage = 0;
@@ -140,7 +139,7 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
 
     if (attackerAbilityId && abilityEffects[attackerAbilityId]) {
         const attackerAbility = abilityEffects[attackerAbilityId];
-        
+
         if (attackerAbility.onModifyStat) {
             details.attack = attackerAbility.onModifyStat(attackStageKey, details.attack, attacker);
         }
@@ -166,9 +165,8 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
     }
     details.finalMultiplier *= details.stabMultiplier * details.critMultiplier * details.effectiveness;
     if (details.effectiveness === 0) {
-        return { damage: 0, effectiveness: 0 };
+        return { damage: 0, effectiveness: 0, move: moveForCalc };
     }
-
     if (currentBattleState.field.magicRoomTurns === 0) {
         if (!attacker.volatileStatuses.includes('Embargo')) {
             const attackerItemId = attacker.heldItem?.id;
@@ -196,17 +194,11 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
             }
         }
     }
-
-    if (abilityEffects[attackerAbilityId]?.onModifyDamage) {
-        abilityEffects[attackerAbilityId].onModifyDamage(details, attacker, move);
-    }
-    if (abilityEffects[defenderAbilityId]?.onModifyDamage) {
-        abilityEffects[defenderAbilityId].onModifyDamage(details, defender, move, attackerAbilityId);
-    }
     let baseDamage = Math.floor(((((2 * attacker.level / 5 + 2) * details.power * (details.attack / details.defense)) / 50) + 2));
     let finalDamage = Math.floor(baseDamage * details.finalMultiplier);
     if (attacker.status === 'Burned' && !isSpecial && attackerAbilityId !== 'guts') {
         finalDamage = Math.floor(finalDamage / 2);
     }
-    return { damage: Math.max(1, finalDamage), effectiveness: details.effectiveness, isCritical: finalIsCritical };
+
+    return { damage: Math.max(1, finalDamage), effectiveness: details.effectiveness, isCritical: finalIsCritical, move: moveForCalc };
 };

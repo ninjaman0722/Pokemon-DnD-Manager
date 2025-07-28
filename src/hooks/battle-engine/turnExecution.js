@@ -779,7 +779,11 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
                         newLog.push(...statLog);
                     };
 
-                    let { damage, effectiveness, isCritical: finalIsCritical } = calculateDamage(actor, target, move, action.isCritical, currentBattleState, newLog);
+                    const damageResult = calculateDamage(actor, target, move, action.isCritical, currentBattleState, newLog);
+                    let damage = damageResult.damage;
+                    const finalIsCritical = damageResult.isCritical;
+                    const effectiveness = damageResult.effectiveness;
+                    const modifiedMove = damageResult.move; // This variable now holds the move with the sheerForceBoosted flag
 
                     attackEntry.isCritical = finalIsCritical;
                     attackEntry.damage = damage;
@@ -792,16 +796,21 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
                     } else if (effectiveness < 1) {
                         attackEntry.effectivenessText = "It's not very effective...";
                     }
+
+                    let validDamage = isNaN(damage) ? 0 : damage;
+
                     if (abilityEffects[targetAbilityId]?.onTakeDamage) {
-                        damage = abilityEffects[targetAbilityId].onTakeDamage(damage, target, move, currentBattleState, newLog, actorAbilityId, statChanger);
+                        validDamage = abilityEffects[targetAbilityId].onTakeDamage(validDamage, target, move, currentBattleState, newLog, actorAbilityId, statChanger);
                     }
                     if (itemEffects[targetItemId]?.onTakeDamage) {
-                        damage = itemEffects[targetItemId].onTakeDamage(damage, target, move, currentBattleState, newLog, actorAbilityId, statChanger);
+                        validDamage = itemEffects[targetItemId].onTakeDamage(validDamage, target, move, currentBattleState, newLog, actorAbilityId, statChanger);
                     }
-                    const actualDamageDealt = Math.min(target.currentHp, damage);
+                    const actualDamageDealt = Math.min(target.currentHp, validDamage);
+
                     lastDamageDealt = actualDamageDealt;
                     if (actualDamageDealt > 0) {
                         target.currentHp -= actualDamageDealt;
+                        
                         const attackerMakesContact = CONTACT_MOVES.has(moveId);
                         const itemPreventsContact = ['protective-pads', 'punching-glove'].includes(actor.heldItem?.id);
                         if (attackerMakesContact && !itemPreventsContact && action.applyEffect !== false) {
@@ -863,7 +872,47 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
                                 newLog.push({ type: 'text', text: `${target.name} was seeded!` });
                             }
                         }
+                        const targetTeamData = currentBattleState.teams.find(t => t.pokemon.some(p => p.id === target.id));
+                        const targetTeamKey = targetTeamData?.id;
 
+                        if (targetTeamKey) {
+                            // Logic for Stealth Rock
+                            if (moveId === 'stealth-rock') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['stealth-rock'] === 0) {
+                                    currentBattleState.field.hazards[targetTeamKey]['stealth-rock'] = 1;
+                                    newLog.push({ type: 'text', text: `Pointed stones floated up around the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                            // Logic for Spikes
+                            else if (moveId === 'spikes') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['spikes'] < 3) {
+                                    currentBattleState.field.hazards[targetTeamKey]['spikes']++;
+                                    newLog.push({ type: 'text', text: `Spikes were scattered all around the feet of the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                            // Logic for Toxic Spikes
+                            else if (moveId === 'toxic-spikes') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['toxic-spikes'] < 2) {
+                                    currentBattleState.field.hazards[targetTeamKey]['toxic-spikes']++;
+                                    newLog.push({ type: 'text', text: `Poisonous spikes were scattered all around the feet of the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                            // Logic for Sticky Web
+                            else if (moveId === 'sticky-web') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['sticky-web'] === 0) {
+                                    currentBattleState.field.hazards[targetTeamKey]['sticky-web'] = 1;
+                                    newLog.push({ type: 'text', text: `A sticky web has been laid out beneath the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                        }
                         // Apply Confusion status from a damaging move
                         if (damage > 0 && CONFUSION_INDUCING_MOVES.has(moveId) && action.applyEffect) {
                             if (!target.volatileStatuses.some(s => (s.name || s) === 'Confused')) {
@@ -876,7 +925,7 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
                         const ailment = move.meta?.ailment?.name;
                         const ailmentChance = move.meta?.ailment_chance;
 
-                        if (ailment && ailment !== 'none' && ailmentChance > 0 && action.applyEffect) {
+                        if (ailment && ailment !== 'none' && ailmentChance > 0 && !modifiedMove.sheerForceBoosted && action.applyEffect) {
                             if (target.status === 'None') {
                                 const statusToApply = API_AILMENT_TO_STATUS_MAP[ailment];
                                 if (statusToApply) {
@@ -894,7 +943,7 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
                                 }
                             }
                         }
-                        if (move.stat_changes && move.stat_changes.length > 0 && !move.sheerForceBoosted && action.applyEffect) {
+                        if (modifiedMove.stat_changes && modifiedMove.stat_changes.length > 0 && !modifiedMove.sheerForceBoosted && action.applyEffect) {
                             for (const targetId of action.targetIds) {
                                 const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === targetId);
                                 if (target && !target.fainted) {

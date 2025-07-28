@@ -50,28 +50,28 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const handleCancelTargeting = () => {
         setTargetingInfo({ isActive: false, potential: [], selected: [], baseAction: null });
     };
-const handleEnterTargetingMode = (move, baseAction) => {
-    const teamId = teams.find(t => t.pokemon.some(p => p.id === baseAction.pokemon.id))?.id;
-    const targetType = move.target.name;
-    const potentialOpponents = teamId === 'players' ? opponentActivePokemon : playerActivePokemon;
-    const potentialAllies = teamId === 'players' ? playerActivePokemon : opponentActivePokemon;
-    let potentialTargets = [];
+    const handleEnterTargetingMode = (move, baseAction) => {
+        const teamId = teams.find(t => t.pokemon.some(p => p.id === baseAction.pokemon.id))?.id;
+        const targetType = move.target.name;
+        const potentialOpponents = teamId === 'players' ? opponentActivePokemon : playerActivePokemon;
+        const potentialAllies = teamId === 'players' ? playerActivePokemon : opponentActivePokemon;
+        let potentialTargets = [];
 
-    switch (targetType) {
-        case 'specific-move': case 'selected-pokemon': case 'random-opponent': case 'all-opponents':
-            potentialTargets = potentialOpponents; break;
-        case 'all-other-pokemon':
-            potentialTargets = allActivePokemon.filter(p => p.id !== baseAction.pokemon.id); break;
-        case 'user-or-ally':
-            potentialTargets = potentialAllies; break;
-        case 'ally':
-            potentialTargets = potentialAllies.filter(p => p.id !== baseAction.pokemon.id); break;
-        default:
-            // This case handles self-targeted or field-wide moves.
-            updateQueuedAction({ ...baseAction, targetIds: [baseAction.pokemon.id] }); return;
-    }
-    setTargetingInfo({ isActive: true, potential: potentialTargets.map(p => p.id), selected: [], baseAction });
-};
+        switch (targetType) {
+            case 'specific-move': case 'selected-pokemon': case 'random-opponent': case 'all-opponents':
+                potentialTargets = potentialOpponents; break;
+            case 'all-other-pokemon':
+                potentialTargets = allActivePokemon.filter(p => p.id !== baseAction.pokemon.id); break;
+            case 'user-or-ally':
+                potentialTargets = potentialAllies; break;
+            case 'ally':
+                potentialTargets = potentialAllies.filter(p => p.id !== baseAction.pokemon.id); break;
+            default:
+                // This case handles self-targeted or field-wide moves.
+                updateQueuedAction({ ...baseAction, targetIds: [baseAction.pokemon.id] }); return;
+        }
+        setTargetingInfo({ isActive: true, potential: potentialTargets.map(p => p.id), selected: [], baseAction });
+    };
     useEffect(() => {
         if (!allActivePokemon.some(p => p.id === activePanelPokemonId) && playerActivePokemon.length > 0) {
             setActivePanelPokemonId(playerActivePokemon[0].id);
