@@ -113,10 +113,6 @@ const MasterControlPanel = ({
                     <label htmlFor="turn-input" className="font-semibold">Current Turn:</label>
                     <input id="turn-input" type="number" value={turn} onChange={(e) => onTurnChange(Number(e.target.value))} className="w-20 bg-gray-700 p-1 rounded-md text-center border border-gray-600" min="1"/>
                 </div>
-                <div className="flex items-center justify-between gap-2 text-sm">
-                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded" />Manual Rolls</label>
-                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={isAiEnabled} onChange={onAiToggle} className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded" />Opponent AI</label>
-                </div>
                 <button onClick={onExecuteTurn} disabled={!allActionsQueued || phase !== 'ACTION_SELECTION' || isProcessingTurn} className="w-full bg-green-600 hover:bg-green-700 font-bold py-2 px-6 rounded-lg text-lg disabled:bg-gray-600 disabled:cursor-not-allowed">
                     {isProcessingTurn ? 'Processing...' : 'Execute Turn'}
                 </button>

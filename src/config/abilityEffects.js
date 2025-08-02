@@ -15,6 +15,7 @@ import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTAB
 import { calculateStatChange } from '../hooks/battle-engine/stateModifiers';
 import { calculateStat } from '../utils/api';
 import { getStatModifier, getEffectiveAbility } from '../hooks/battle-engine/battleUtils';
+import { resolveChance } from '../hooks/battle-engine/battleUtils';
 // --- Helper Functions ---
 const getActiveOpponents = (pokemon, battleState, newLog) => {
     const pokemonTeamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
@@ -292,18 +293,29 @@ export const abilityEffects = {
     },
 
     'static': {
-        onDamagedByContact: (pokemon, attacker, newLog) => {
+        // 1. Update the function to accept 'battleState'
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             if (attacker.status === 'None' && !attacker.types.includes('electric')) {
-                attacker.status = 'Paralyzed';
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Static paralyzed ${attacker.name}!` });
+                // 2. Define a unique key for the DM to control this specific event
+                const dmFlagKey = `willTriggerStatic_${pokemon.id}_on_${attacker.id}`;
+
+                // 3. Use resolveChance to determine the outcome
+                if (resolveChance(30, dmFlagKey, battleState)) {
+                    attacker.status = 'Paralyzed';
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Static paralyzed ${attacker.name}!` });
+                }
             }
         }
     },
     'poison-point': {
-        onDamagedByContact: (pokemon, attacker, newLog) => {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             if (attacker.status === 'None') {
-                attacker.status = 'Poisoned';
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Poison Point poisoned ${attacker.name}!` });
+                const dmFlagKey = `willTriggerPoisonPoint_${pokemon.id}_on_${attacker.id}`;
+                // The chance is 30%
+                if (resolveChance(30, dmFlagKey, battleState)) {
+                    attacker.status = 'Poisoned';
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Poison Point poisoned ${attacker.name}!` });
+                }
             }
         }
     },
@@ -594,15 +606,15 @@ export const abilityEffects = {
         }
     },
 
-'justified': {
-    onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbilityId, statChanger) => {
-        if (move.type === 'dark' && damage > 0 && pokemon.stat_stages['attack'] < 6) {
-            newLog.push({ type: 'text', text: `${pokemon.name}'s Justified raised its Attack!` });
-            statChanger(pokemon, 'attack', 1, newLog, battleState);
+    'justified': {
+        onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbilityId, statChanger) => {
+            if (move.type === 'dark' && damage > 0 && pokemon.stat_stages['attack'] < 6) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Justified raised its Attack!` });
+                statChanger(pokemon, 'attack', 1, newLog, battleState);
+            }
+            return damage;
         }
-        return damage;
-    }
-},
+    },
     'flash-fire': {
         onCheckImmunity: (move, pokemon, attackerAbilityId, newLog) => {
             if (move.type === 'fire') {
@@ -775,15 +787,19 @@ export const abilityEffects = {
     },
     'harvest': {
         onEndOfTurn: (pokemon, battleState, newLog) => {
+            // The condition to check if Harvest can even trigger remains the same.
             if (pokemon.lastConsumedItem && !pokemon.heldItem && pokemon.lastConsumedItem.name.includes('berry')) {
                 const weather = battleState.field.weather;
                 const isSun = (weather === 'sunshine' || weather === 'harsh-sunshine');
+
+                // 1. Determine the chance based on game state.
                 const chance = isSun ? 100 : 50;
 
-                // This new check allows the test to force the ability to activate.
-                const willHarvest = battleState.dm?.willHarvest || (Math.random() * 100 < chance);
+                // 2. Create a unique, dynamic key for this specific event.
+                const dmFlagKey = `willTriggerHarvest_${pokemon.id}`;
 
-                if (willHarvest) {
+                // 3. Use the single, centralized resolveChance function.
+                if (resolveChance(chance, dmFlagKey, battleState)) {
                     const restoredItem = { ...pokemon.lastConsumedItem };
                     pokemon.heldItem = restoredItem;
                     pokemon.lastConsumedItem = null;
@@ -826,25 +842,31 @@ export const abilityEffects = {
     },
     'moody': {
         onEndOfTurn: (pokemon, battleState, newLog, statChanger) => {
-            const allStats = ['attack', 'defense', 'special-attack', 'special-defense', 'speed', 'accuracy', 'evasion'];
+            // 1. Define the unique keys for the DM's choices.
+            const boostStatKey = `moodyBoostStat_${pokemon.id}`;
+            const lowerStatKey = `moodyLowerStat_${pokemon.id}`;
 
+            // 2. Get the DM's chosen stats from the battleState.dm object.
+            const chosenBoostStat = battleState.dm?.[boostStatKey];
+            const chosenLowerStat = battleState.dm?.[lowerStatKey];
+
+            // 3. Determine which stats are eligible to be changed, same as before.
+            const allStats = ['attack', 'defense', 'special-attack', 'special-defense', 'speed', 'accuracy', 'evasion'];
             const statsToBoost = allStats.filter(stat => pokemon.stat_stages[stat] < 6);
             const statsToLower = allStats.filter(stat => pokemon.stat_stages[stat] > -6);
 
-            if (statsToBoost.length > 0) {
-                const randomBoostStat = statsToBoost[Math.floor(Math.random() * statsToBoost.length)];
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody boosted its ${randomBoostStat.replace('-', ' ')}!` });
-                statChanger(pokemon, randomBoostStat, 2, newLog, battleState);
-                const index = statsToLower.indexOf(randomBoostStat);
-                if (index > -1) {
-                    statsToLower.splice(index, 1);
-                }
+            // --- Execute the Stat Boost ---
+            // Proceed only if the DM has made a valid choice.
+            if (chosenBoostStat && statsToBoost.includes(chosenBoostStat)) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody boosted its ${chosenBoostStat.replace('-', ' ')}!` });
+                statChanger(pokemon, chosenBoostStat, 2, newLog, battleState);
             }
 
-            if (statsToLower.length > 0) {
-                const randomLowerStat = statsToLower[Math.floor(Math.random() * statsToLower.length)];
-                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody lowered its ${randomLowerStat.replace('-', ' ')}!` });
-                statChanger(pokemon, randomLowerStat, -1, newLog, battleState);
+            // --- Execute the Stat Lower ---
+            // Proceed only if the DM has made a valid choice.
+            if (chosenLowerStat && statsToLower.includes(chosenLowerStat) && chosenLowerStat !== chosenBoostStat) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Moody lowered its ${chosenLowerStat.replace('-', ' ')}!` });
+                statChanger(pokemon, chosenLowerStat, -1, newLog, battleState);
             }
         }
     },

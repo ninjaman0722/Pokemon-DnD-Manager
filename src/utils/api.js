@@ -1,6 +1,6 @@
 // src/utils/api.js
 import { getEffectiveAbility, getStatModifier } from '../hooks/battle-engine/battleUtils';
-import { POKEAPI_BASE_URL } from '../config/gameData';
+import { POKEAPI_BASE_URL, STAGE_MULTIPLIERS } from '../config/gameData';
 import { officialFormsData } from '../config/officialFormsData';
 
 /**
@@ -185,10 +185,16 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     const moves = moveResults.filter(r => r.status === 'fulfilled').map(r => r.value);
     const baseStats = Object.fromEntries(pokeData.stats.map(s => [s.stat.name, s.base_stat]));
     const types = pokeData.types.map(t => t.type.name);
-    const newMaxHp = calculateStat(baseStats.hp, level, true);
 
+    // --- CORRECTED ORDER ---
+    // Declare these identifiers first.
     const speciesName = speciesData.name;
     const speciesIdentifier = pokeData.name;
+
+    // Now, calculate the HP using the identifier.
+    const newMaxHp = calculateStat(baseStats.hp, level, true, speciesIdentifier);
+    // --- END CORRECTION ---
+
     let formLookupKey = speciesName;
     if (formLookupKey.includes('-')) {
         const baseName = formLookupKey.split('-')[0];
@@ -252,44 +258,74 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
     };
 }
 
-export const getAccuracyEvasionModifier = (stage) => {
-    const multipliers = {
-        '6': 3, '5': 2.66, '4': 2.33, '3': 2, '2': 1.66, '1': 1.33,
-        '0': 1, '-1': 0.75, '-2': 0.6, '-3': 0.5, '-4': 0.43, '-5': 0.36, '-6': 0.33
-    };
-    return multipliers[stage] || 1;
-};
-
 // Add this main calculation function to api.js
 export const calculateHitChance = (attacker, defender, move, battleState) => {
-    if (move.accuracy === null) return 100;
-
-    let accuracy = move.accuracy;
-    // --- CORRECTED: Use the .id property for all logic ---
+    // --- ADDED: Check for special cases that guarantee a hit ---
     const attackerAbilityId = getEffectiveAbility(attacker, battleState)?.id;
     const defenderAbilityId = getEffectiveAbility(defender, battleState)?.id;
+    if (attackerAbilityId === 'no-guard' || defenderAbilityId === 'no-guard') return 100;
+    if (move.accuracy === null) return 100;
+
+    // Case 1: No Guard ability on either Pokémon
+    if (attackerAbilityId === 'no-guard' || defenderAbilityId === 'no-guard') {
+        return 100;
+    }
+    // Case 2: Move has null accuracy (e.g., Aerial Ace) - bypasses checks
+    if (move.accuracy === null) {
+        return 100;
+    }
+    // Case 3: Weather-dependent accuracy
+    if ((move.id === 'thunder' || move.id === 'hurricane') && (battleState.field.weather === 'rain' || battleState.field.weather === 'heavy-rain')) {
+        return 100;
+    }
+    if (move.id === 'blizzard' && battleState.field.weather === 'snow') {
+        return 100;
+    }
+
+    if (defender.volatileStatuses?.includes('Charging') && ['fly', 'dig', 'dive'].includes(defender.chargingMove?.id)) {
+        return 0;
+    }
+
+    let accuracy = move.accuracy;
+
+    // --- REWRITTEN: Accurate Accuracy/Evasion Stage Calculation ---
+    // 1. Get the individual stages, clamping them to the -6 to +6 range.
+    const accuracyStage = Math.max(-6, Math.min(6, attacker.stat_stages.accuracy));
+    const evasionStage = Math.max(-6, Math.min(6, defender.stat_stages.evasion));
+
+    // 2. Look up the fractional multipliers for each stage.
+    const accMod = STAGE_MULTIPLIERS[accuracyStage];
+    const evaMod = STAGE_MULTIPLIERS[evasionStage];
+
+    // 3. Calculate the final stage modifier by multiplying by the attacker's
+    //    accuracy and dividing by the defender's evasion.
+    const stageMultiplier = (accMod.num / accMod.den) / (evaMod.num / evaMod.den);
+    accuracy *= stageMultiplier;
+    
+    // --- "Other Modifiers" (Abilities, Items, etc.) - no change here ---
     const attackerItemId = attacker.heldItem?.id;
     const defenderItemId = defender.heldItem?.id;
 
-    const accuracyStage = attacker.stat_stages.accuracy;
-    const evasionStage = defender.stat_stages.evasion;
-    const stageMultiplier = getAccuracyEvasionModifier(accuracyStage - evasionStage);
-    accuracy *= stageMultiplier;
-
-    // --- CORRECTED: All checks now use the functional ID ---
+    // Abilities
     if (attackerAbilityId === 'compound-eyes') accuracy *= 1.3;
+    if (attackerAbilityId === 'victory-star') accuracy *= 1.1; // ADDED: Victory Star
     if (defenderAbilityId === 'sand-veil' && battleState.field.weather === 'sandstorm') accuracy *= 0.8;
     if (defenderAbilityId === 'snow-cloak' && battleState.field.weather === 'snow') accuracy *= 0.8;
-    if (defenderAbilityId === 'tangled-feet' && attacker.volatileStatuses.some(s => (s.name || s) === 'Confused')) accuracy *= 0.5;
+    if (defenderAbilityId === 'tangled-feet' && defender.volatileStatuses.some(s => (s.name || s) === 'Confused')) accuracy *= 0.5;
 
+    // Items
     if (attackerItemId === 'wide-lens') accuracy *= 1.1;
-    if (defenderItemId === 'bright-powder') accuracy *= 0.9;
-
-    const attackerSpeed = calculateStat(attacker.stats.speed, attacker.level) * getStatModifier(attacker.stat_stages.speed);
-    const defenderSpeed = calculateStat(defender.stats.speed, defender.level) * getStatModifier(defender.stat_stages.speed);
+    if (defenderItemId === 'bright-powder' || defenderItemId === 'lax-incense') accuracy *= 0.9; // ADDED: Lax Incense
+    
+    // CORRECTED: No need to recalculate stats here; they are already calculated.
+    const attackerSpeed = attacker.stats.speed * getStatModifier(attacker.stat_stages.speed);
+    const defenderSpeed = defender.stats.speed * getStatModifier(defender.stat_stages.speed);
     if (attackerItemId === 'zoom-lens' && attackerSpeed < defenderSpeed) {
         accuracy *= 1.2;
     }
+
+    // Field Effects
+    if (battleState.field.gravityTurns > 0) accuracy *= (5/3); // ADDED: Gravity
 
     return Math.round(Math.min(100, accuracy));
 };
@@ -309,7 +345,12 @@ export const getSprite = (pokemon) => {
     return pokemon.isShiny ? pokemon.shinySprite : pokemon.sprite;
 };
 
-export const calculateStat = (base, level, isHp = false) => {
+export const calculateStat = (base, level, isHp = false, pokemonName = '') => {
+    // Special case for Shedinja, whose HP is always 1.
+    if (isHp && pokemonName.toLowerCase().includes('shedinja')) {
+        return 1;
+    }
+
     if (!base || !level) return 0;
     if (isHp) return Math.floor(((2 * base) * level) / 100) + level + 10;
     return Math.floor(((2 * base) * level) / 100) + 5;

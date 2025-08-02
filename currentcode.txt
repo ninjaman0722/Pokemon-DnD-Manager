@@ -1,0 +1,253 @@
+            let lastDamageDealt = 0;
+
+            for (const [i, hit] of action.hits.entries()) {
+                // The target can be different for each individual hit
+                const targetId = hit.targetId;
+
+                let currentTargetId = targetId;
+                let originalTarget = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === currentTargetId);
+
+                // Check for Magic Bounce
+                if (originalTarget && getEffectiveAbility(originalTarget)?.id === 'magic-bounce' && REFLECTABLE_MOVES.has(moveId)) {
+                    currentTargetId = actor.id;
+                    newLog.push({ type: 'text', text: `${originalTarget.name} bounced the move back!` });
+                }
+
+                const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === currentTargetId);
+                if (!target || target.fainted) {
+                    console.warn(`Missing or fainted target:`, {
+                        hitIndex: i,
+                        targetId,
+                        hits: action.hits,
+                        targetIds: action.targetIds,
+                        actor: actor.name,
+                        move: move.name
+                    });
+                    newLog.push({ type: 'text', text: 'But there was no target!' });
+                    continue;
+                }
+                const targetAbilityId = getEffectiveAbility(target, currentBattleState)?.id;
+                const targetItemId = target.heldItem?.id;
+                // Create a fresh attack log entry for each hit
+                const attackEntry = {
+                    type: 'attack',
+                    attackerName: actor.name,
+                    moveName: move.name,
+                    defenderName: target.name,
+                    isCritical: action.isCritical,
+                    damage: 0,
+                    effectivenessText: '',
+                    fainted: false,
+                    breakdown: {},
+                    moveType: move?.type ?? 'status',
+                    moveCategory: (typeof move?.damage_class === 'object' ? move.damage_class.name : move.damage_class) ?? 'status',
+                };
+
+                if (action.willHit) {
+                    const statChanger = (pokemonToChange, stat, change) => {
+                        const { updatedTarget, newLog: statLog } = calculateStatChange(pokemonToChange, stat, change, currentBattleState);
+                        Object.assign(pokemonToChange, updatedTarget);
+                        newLog.push(...statLog);
+                    };
+
+                    const damageResult = calculateDamage(actor, target, move, action.isCritical, currentBattleState, newLog);
+                    let damage = damageResult.damage;
+                    const finalIsCritical = damageResult.isCritical;
+                    const effectiveness = damageResult.effectiveness;
+                    const modifiedMove = damageResult.move; // This variable now holds the move with the sheerForceBoosted flag
+
+                    attackEntry.isCritical = finalIsCritical;
+                    attackEntry.damage = damage;
+
+                    lastDamageDealt = damage;
+                    if (effectiveness === 0) {
+                        attackEntry.effectivenessText = "It had no effect...";
+                    } else if (effectiveness > 1) {
+                        attackEntry.effectivenessText = "It's super effective!";
+                    } else if (effectiveness < 1) {
+                        attackEntry.effectivenessText = "It's not very effective...";
+                    }
+
+                    let validDamage = isNaN(damage) ? 0 : damage;
+
+                    if (abilityEffects[targetAbilityId]?.onTakeDamage) {
+                        validDamage = abilityEffects[targetAbilityId].onTakeDamage(validDamage, target, move, currentBattleState, newLog, actorAbilityId, statChanger);
+                    }
+                    if (itemEffects[targetItemId]?.onTakeDamage) {
+                        validDamage = itemEffects[targetItemId].onTakeDamage(validDamage, target, move, currentBattleState, newLog, actorAbilityId, statChanger);
+                    }
+                    const actualDamageDealt = Math.min(target.currentHp, validDamage);
+
+                    lastDamageDealt = actualDamageDealt;
+                    if (actualDamageDealt > 0) {
+                        target.currentHp -= actualDamageDealt;
+
+                        const attackerMakesContact = CONTACT_MOVES.has(moveId);
+                        const itemPreventsContact = ['protective-pads', 'punching-glove'].includes(actor.heldItem?.id);
+                        if (attackerMakesContact && !itemPreventsContact && action.applyEffect !== false) {
+                            const defenderAbility = abilityEffects[target.ability?.id];
+                            if (defenderAbility?.onDamagedByContact) {
+                                defenderAbility.onDamagedByContact(target, actor, newLog);
+                            }
+                            const defenderItem = itemEffects[target.heldItem?.id];
+                            if (defenderItem?.onDamagedByContact) {
+                                defenderItem.onDamagedByContact(target, actor, currentBattleState, newLog);
+                            }
+                        }
+                    }
+                    if (damage === 0 && effectiveness === 0) {
+                        const targetAbilityId = getEffectiveAbility(target, currentBattleState)?.id;
+                        if ((targetAbilityId === 'volt-absorb' && move.type === 'electric') ||
+                            (targetAbilityId === 'water-absorb' && move.type === 'water')) {
+                            if (target.currentHp < target.maxHp) {
+                                const healAmount = Math.floor(target.maxHp / 4);
+                                target.currentHp = Math.min(target.maxHp, target.currentHp + healAmount);
+                                newLog.push({ type: 'text', text: `${target.name}'s ${target.ability.name} restored its health!` });
+                            }
+                        }
+                    }
+                    if (target.currentHp === 0) {
+                        target.fainted = true;
+                        // CORRECTED: Use the `actorAbilityId` variable defined at the top.
+                        if (abilityEffects[actorAbilityId]?.onAfterKO) {
+                            abilityEffects[actorAbilityId].onAfterKO(actor, target, newLog, statChanger, currentBattleState);
+                        }
+                    }
+
+                    // For the very FIRST hit, apply secondary effects like status, stat changes, etc.
+                    if (i === 0) {
+                        // Apply Trapping status
+                        if (damage > 0 && BINDING_MOVES.has(moveId)) {
+                            if (!target.volatileStatuses.some(s => s.name === 'Trapped')) {
+                                // Determine duration: 7 for Grip Claw, otherwise 4-5 turns.
+                                const duration = itemId === 'grip-claw'
+                                    ? 7
+                                    : Math.random() < 0.5 ? 4 : 5;
+
+                                target.volatileStatuses.push({
+                                    name: 'Trapped',
+                                    sourceId: actor.id,
+                                    duration: duration
+                                });
+                                newLog.push({ type: 'text', text: `${target.name} was trapped!` });
+                            }
+                        }
+
+                        // Apply Leech Seed status
+                        if (moveId === LEECH_SEED_MOVE) {
+                            if (target.types.includes('grass')) { newLog.push({ type: 'text', text: `It doesn't affect ${target.name}...` }); }
+                            else if (target.volatileStatuses.some(s => s.name === 'Leech Seed')) { newLog.push({ type: 'text', text: `${target.name} is already seeded!` }); }
+                            else {
+                                // ADD THE justApplied FLAG HERE
+                                target.volatileStatuses.push({ name: 'Leech Seed', sourceId: actor.id, justApplied: true });
+                                newLog.push({ type: 'text', text: `${target.name} was seeded!` });
+                            }
+                        }
+                        const targetTeamData = currentBattleState.teams.find(t => t.pokemon.some(p => p.id === target.id));
+                        const targetTeamKey = targetTeamData?.id;
+
+                        if (targetTeamKey) {
+                            // Logic for Stealth Rock
+                            if (moveId === 'stealth-rock') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['stealth-rock'] === 0) {
+                                    currentBattleState.field.hazards[targetTeamKey]['stealth-rock'] = 1;
+                                    newLog.push({ type: 'text', text: `Pointed stones floated up around the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                            // Logic for Spikes
+                            else if (moveId === 'spikes') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['spikes'] < 3) {
+                                    currentBattleState.field.hazards[targetTeamKey]['spikes']++;
+                                    newLog.push({ type: 'text', text: `Spikes were scattered all around the feet of the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                            // Logic for Toxic Spikes
+                            else if (moveId === 'toxic-spikes') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['toxic-spikes'] < 2) {
+                                    currentBattleState.field.hazards[targetTeamKey]['toxic-spikes']++;
+                                    newLog.push({ type: 'text', text: `Poisonous spikes were scattered all around the feet of the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                            // Logic for Sticky Web
+                            else if (moveId === 'sticky-web') {
+                                if (currentBattleState.field.hazards[targetTeamKey]['sticky-web'] === 0) {
+                                    currentBattleState.field.hazards[targetTeamKey]['sticky-web'] = 1;
+                                    newLog.push({ type: 'text', text: `A sticky web has been laid out beneath the ${targetTeamKey}'s team!` });
+                                } else {
+                                    newLog.push({ type: 'text', text: 'But it failed!' });
+                                }
+                            }
+                        }
+                        // Apply Confusion status from a damaging move
+                        if (damage > 0 && CONFUSION_INDUCING_MOVES.has(moveId) && action.applyEffect) {
+                            if (!target.volatileStatuses.some(s => (s.name || s) === 'Confused')) {
+                                target.volatileStatuses.push('Confused');
+                                newLog.push({ type: 'text', text: `${target.name} became confused!` });
+                            }
+                        }
+
+                        // Apply non-volatile status ailments (Burn, Poison, etc.)
+                        const ailment = move.meta?.ailment?.name;
+                        const ailmentChance = move.meta?.ailment_chance || 0;
+
+                        if (ailment && ailment !== 'none' && !modifiedMove.sheerForceBoosted) {
+                            // Use a dynamic key for the specific move and target [cite: 104]
+                            const dmFlagKey = `willApplyEffect_${move.id}_on_${target.id}`;
+                            if (resolveChance(ailmentChance, dmFlagKey, currentBattleState)) {
+                                if (target.status === 'None') {
+                                    const statusToApply = API_AILMENT_TO_STATUS_MAP[ailment];
+                                    if (statusToApply) {
+                                        // Check for type immunities to status
+                                        const isImmune =
+                                            (statusToApply === 'Paralyzed' && target.types.includes('electric')) ||
+                                            (statusToApply === 'Burned' && target.types.includes('fire')) ||
+                                            (statusToApply === 'Frozen' && target.types.includes('ice')) ||
+                                            ((statusToApply === 'Poisoned' || statusToApply === 'Badly Poisoned') && (target.types.includes('poison') || target.types.includes('steel')));
+
+                                        if (!isImmune) {
+                                            target.status = statusToApply;
+                                            newLog.push({ type: 'text', text: `${target.name} was afflicted with ${statusToApply.toLowerCase()}!` });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (modifiedMove.stat_changes && modifiedMove.stat_changes.length > 0 && !modifiedMove.sheerForceBoosted) {
+                            const statChangeChance = move.meta?.stat_chance || 0;
+                            const dmFlagKey = `willApplyStatChange_${move.id}_on_${target.id}`;
+                            if (resolveChance(statChangeChance, dmFlagKey, currentBattleState)) {
+                                for (const targetId of action.targetIds) {
+                                    const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === targetId);
+                                    if (target && !target.fainted) {
+                                        // Check for Covert Cloak before applying effect
+                                        if (target.heldItem?.id === 'covert-cloak') {
+                                            newLog.push({ type: 'text', text: `${target.name}'s Covert Cloak protected it from the additional effect!` });
+                                            continue; // Skip to the next target
+                                        }
+                                        move.stat_changes.forEach(sc => {
+                                            const { updatedTarget, newLog: statLog } = calculateStatChange(target, sc.stat.name, sc.change, currentBattleState);
+                                            Object.assign(target, updatedTarget);
+                                            newLog.push(...statLog);
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                } else {
+                    newLog.push({ type: 'text', text: `${actor.name}'s attack missed ${target.name}!` });
+                    const itemIdOnMiss = actor.heldItem?.name.toLowerCase();
+                    if (itemEffects[itemIdOnMiss]?.onMiss) {
+                        itemEffects[itemIdOnMiss].onMiss(actor, move, currentBattleState, newLog, calculateStatChange);
+                    }
+                    break; // If any hit misses, the entire move's sequence ends
+                }
+                newLog.push(attackEntry);
+            }

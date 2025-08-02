@@ -16,7 +16,7 @@ export const useDynamicStats = (pokemon, trainerCategory) => {
         const effectiveLevel = trainerCategory === 'partyMembers' ? (partyLevel || pokemon.level) : pokemon.level;
 
         const stats = {
-            hp: calculateStat(pokemon.baseStats.hp, effectiveLevel, true),
+            hp: calculateStat(pokemon.baseStats.hp, effectiveLevel, true, pokemon.name),
             attack: calculateStat(pokemon.baseStats.attack, effectiveLevel),
             defense: calculateStat(pokemon.baseStats.defense, effectiveLevel),
             'special-attack': calculateStat(pokemon.baseStats['special-attack'], effectiveLevel),

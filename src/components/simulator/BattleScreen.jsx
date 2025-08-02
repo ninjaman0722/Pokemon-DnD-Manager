@@ -11,6 +11,7 @@ import BattleLog from './BattleLog';
 import PokemonStatEditorModal from './PokemonStatEditorModal';
 import HazardDisplay from './HazardDisplay';
 import TargetingBanner from './TargetingBanner';
+import TurnResolutionModal from './TurnResolutionModal';
 
 const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const [queuedActions, setQueuedActions] = useState({});
@@ -19,9 +20,18 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const [turnOrder, setTurnOrder] = useState([]);
     const [editingPokemonStats, setEditingPokemonStats] = useState(null);
     const [isCompactView, setIsCompactView] = useState(true);
+    const [isResolutionModalOpen, setIsResolutionModalOpen] = useState(false);
+    const [resolutionData, setResolutionData] = useState([]);
 
-    const { isProcessingTurn, handleExecuteTurn, handleSwitchIn } = useBattleEngine(
-        battleState, battleId, allTrainers, queuedActions, setQueuedActions, setTurnOrder
+    const {
+        isProcessingTurn,
+        handlePrepareTurn,
+        handleConfirmAndExecuteTurn, // This function will be new
+        handleSwitchIn
+    } = useBattleEngine(
+        battleState, battleId, allTrainers, queuedActions, setQueuedActions, setTurnOrder,
+        // Pass the new state setters to the hook
+        setIsResolutionModalOpen, setResolutionData
     );
 
     const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
@@ -36,7 +46,29 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const [targetingInfo, setTargetingInfo] = useState({ isActive: false, potential: [], selected: [], baseAction: null });
     const handleTargetSelection = (targetId) => {
         if (!targetingInfo.isActive || !targetingInfo.potential.includes(targetId)) return;
-        setTargetingInfo(prev => ({ ...prev, selected: prev.selected.includes(targetId) ? prev.selected.filter(id => id !== targetId) : [...prev.selected, targetId] }));
+        const moveTargetType = targetingInfo.baseAction.move.target.name;
+
+        // Define which move types should only ever have one target
+        const singleTargetTypes = new Set([
+            'specific-move',
+            'selected-pokemon',
+            'user-or-ally',
+            'ally'
+        ]);
+        setTargetingInfo(prev => {
+            // If the move is a single-target type, clicking a new target REPLACES the selection.
+            if (singleTargetTypes.has(moveTargetType)) {
+                // If the clicked target is already selected, deselect it. Otherwise, select it.
+                const newSelection = prev.selected.includes(targetId) ? [] : [targetId];
+                return { ...prev, selected: newSelection };
+            } else {
+                // Otherwise (for multi-target moves), toggle the selection as before.
+                const newSelection = prev.selected.includes(targetId)
+                    ? prev.selected.filter(id => id !== targetId)
+                    : [...prev.selected, targetId];
+                return { ...prev, selected: newSelection };
+            }
+        });
     };
     const handleConfirmTargets = () => {
         if (targetingInfo.selected.length === 0) return;
@@ -120,6 +152,10 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const controllablePokemon = [...playerActivePokemon, ...(opponentTeam.name !== 'Wild Pokémon' || !isAiEnabled ? opponentActivePokemon : [])];
     const allActionsQueued = controllablePokemon.every(p => queuedActions[p.id]);
 
+    const handleConfirmResolution = (dmOverrides) => {
+        setIsResolutionModalOpen(false);
+        handleConfirmAndExecuteTurn(dmOverrides); // Call the final execution function
+    };
     const renderControlArea = () => {
         const actionPanelContent = () => {
             if (phase === 'REPLACEMENT' && replacementInfo) {
@@ -183,14 +219,15 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
                 onToggleCompactView={() => setIsCompactView(!isCompactView)}
                 onPokemonSelect={setActivePanelPokemonId}
                 onAiToggle={(e) => setIsAiEnabled(e.target.checked)}
-                onExecuteTurn={handleExecuteTurn}
+                onExecuteTurn={handlePrepareTurn}
+                dmOverrides={{}} // Pass a dummy or remove if MasterControlPanel is fully reverted
+                onDmOverrideChange={() => { }} // Pass a dummy or remove
                 onTurnChange={handleTurnChange}
                 onFieldChange={handleFieldChange}
                 onHazardChange={handleHazardChange}
                 targetingInfo={{ isActive: false }} // Pass a dummy object as it's no longer used here
             />
         );
-
         if (isCompactView) {
             return (
                 <div className="grid grid-cols-2 gap-2 h-full">
@@ -213,7 +250,12 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
 
     return (
         <div className="min-h-screen bg-gray-800 text-white p-2 sm:p-4 flex flex-col font-sans h-screen">
-            {/* NOTE: Targeting Banner and complex onClick logic for cards are now removed from here */}
+            <TurnResolutionModal
+                isOpen={isResolutionModalOpen}
+                turnData={resolutionData}
+                onConfirm={handleConfirmResolution}
+                onCancel={() => setIsResolutionModalOpen(false)}
+            />
             {editingPokemonStats && <PokemonStatEditorModal pokemon={editingPokemonStats} onSave={handleDirectPokemonUpdate} onClose={() => setEditingPokemonStats(null)} />}
             <TurnOrderDisplay turnOrder={turnOrder} turn={battleState.turn} />
             <div className="h-2/3 flex flex-col justify-between relative bg-gray-700 rounded-lg p-4 bg-no-repeat bg-cover bg-center">

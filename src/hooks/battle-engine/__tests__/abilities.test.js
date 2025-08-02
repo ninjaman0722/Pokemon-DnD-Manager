@@ -2277,8 +2277,6 @@ describe('Ability Tests', () => {
             const wonderGuardUser = createPokemon('Shedinja', {
                 ...baseShedinjaData,
                 ability: { id: 'wonder-guard', name: 'Wonder Guard' },
-                maxHp: 1,      // Manually set Shedinja's max HP to 1
-                currentHp: 1,  // Manually set Shedinja's current HP to 1
             });
 
             // CORRECTED: Weezing's Sludge Bomb (Poison) is resisted by Shedinja (Bug/Ghost), so it's not super-effective.
@@ -2314,8 +2312,6 @@ describe('Ability Tests', () => {
             const wonderGuardUser = createPokemon('Shedinja', {
                 ...baseShedinjaData,
                 ability: { id: 'wonder-guard', name: 'Wonder Guard' },
-                maxHp: 1,      // Manually set Shedinja's max HP to 1
-                currentHp: 1,  // Manually set Shedinja's current HP to 1
             });
 
             // Tyranitar's Stone Edge (Rock) is super-effective against Shedinja's Bug type. This part of the test was correct.

@@ -413,14 +413,24 @@ export const KEY_ITEM_RECIPES = {
         'hoopa-unbound': 'hoopa',
     },
 };
-export const Z_CRYSTAL_MAP = {
-    'normalium-z': { type: 'normal', moveName: 'Breakneck Blitz', category: 'varies' },
-    'firium-z': { type: 'fire', moveName: 'Inferno Overdrive', category: 'varies' },
-    'waterium-z': { type: 'water', moveName: 'Hydro Vortex', category: 'varies' },
-    'grassium-z': { type: 'grass', moveName: 'Bloom Doom', category: 'varies' },
-    // ...and so on for every type
-
-    // Signature Z-Crystals
-    'snorlium-z': { pokemon: 'Snorlax', requiredMove: 'Giga Impact', moveName: 'Pulverizing Pancake', category: 'physical', power: 210 },
-    'decidium-z': { pokemon: 'Decidueye', requiredMove: 'Spirit Shackle', moveName: 'Sinister Arrow Raid', category: 'physical', power: 180 },
+export const STAGE_MULTIPLIERS = {
+    '6': { num: 9, den: 3 }, '5': { num: 8, den: 3 }, '4': { num: 7, den: 3 },
+    '3': { num: 6, den: 3 }, '2': { num: 5, den: 3 }, '1': { num: 4, den: 3 },
+    '0': { num: 3, den: 3 },
+    '-1': { num: 3, den: 4 }, '-2': { num: 3, den: 5 }, '-3': { num: 3, den: 6 },
+    '-4': { num: 3, den: 7 }, '-5': { num: 3, den: 8 }, '-6': { num: 3, den: 9 }
 };
+export const UNMISSABLE_MOVES = new Set([
+    'aerial-ace',
+    'aura-sphere',
+    'disarming-voice',
+    'feint-attack',
+    'magical-leaf',
+    'magnet-bomb',
+    'power-up-punch',
+    'shadow-punch',
+    'shock-wave',
+    'smart-strike',
+    'swift',
+    'vital-throw'
+]);

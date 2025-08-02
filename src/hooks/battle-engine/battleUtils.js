@@ -68,3 +68,58 @@ export const getActiveOpponents = (pokemon, currentBattleState) => {
     const opponentActiveIndices = activePokemonIndices[opponentTeam.id] || [];
     return opponentTeam.pokemon.filter((p, i) => opponentActiveIndices.includes(i) && p && !p.fainted);
 };
+/**
+ * Resolves any chance-based event according to the 100% vs. DM-controlled rule.
+ * @param {number} chance - The percentage chance of the event occurring (e.g., 30 for 30%).
+ * @param {string} dmFlagKey - The key to check for in the battleState.dm object (e.g., 'willApplyEffect').
+ * @param {object} battleState - The current battle state, which may contain the dm object.
+ * @returns {boolean} - Whether the event should occur.
+ */
+export const resolveChance = (dmFlagKey, battleState) => {
+    // 1. PRIORITIZE the DM's decision. If a flag is set, always obey it.
+    if (battleState.dm?.[dmFlagKey] !== undefined) {
+        return battleState.dm[dmFlagKey];
+    }
+    // 3. If no DM decision and not guaranteed, it fails by default.
+    return false;
+};
+export const calculateTurnOrderSpeed = (pokemon, battleState) => {
+    if (!pokemon) return 0;
+
+    // Start with the base stat and apply stage modifiers
+    let speed = (pokemon.stats?.speed || 0) * getStatModifier(pokemon.stat_stages?.speed || 0);
+
+    // Factor in Protosynthesis / Quark Drive boosts
+    if (pokemon.boosterBoost?.stat === 'speed') {
+        speed *= pokemon.boosterBoost.multiplier;
+    }
+
+    const abilityId = getEffectiveAbility(pokemon, battleState)?.id;
+    const itemId = pokemon.heldItem?.id;
+
+    // Factor in abilities
+    if (abilityId === 'unburden' && pokemon.originalHeldItem && !pokemon.heldItem) {
+        speed *= 2;
+    }
+    if (abilityEffects[abilityId]?.onModifyStat) {
+        speed = abilityEffects[abilityId].onModifyStat('speed', speed, pokemon, battleState);
+    }
+
+    // Factor in status conditions
+    if (pokemon.status === 'Paralyzed') {
+        speed /= 2;
+    }
+
+    // Factor in items
+    if (battleState.field.magicRoomTurns === 0) {
+        if (itemId === 'choice-scarf') speed *= 1.5;
+        if (itemId === 'iron-ball') speed *= 0.5;
+    }
+
+    // Factor in abilities/items that guarantee moving last
+    if (abilityId === 'stall' || (itemId && ['lagging-tail', 'full-incense'].includes(itemId))) {
+        return -1; // Give it a speed of -1 to ensure it moves after everything else
+    }
+
+    return speed;
+};
