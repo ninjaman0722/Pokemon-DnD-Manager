@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, addDoc, serverTimestamp, collection } from 'firebase/firestore';
+import { doc, setDoc, addDoc, serverTimestamp, collection, writeBatch } from 'firebase/firestore';
 import { db, appId } from '../../config/firebase';
 import { MAX_PARTY_SIZE } from '../../config/gameData';
 import { calculateStat, fetchPokemonData } from '../../utils/api';
@@ -119,11 +119,10 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
     };
 
     const scalePokemonToLevel = (pokemon, level) => {
-        if (!pokemon || !pokemon.baseStats) return null;
-        const newMaxHp = calculateStat(pokemon.baseStats.hp, level, true);
+        if (!pokemon || !pokemon.baseStats || level === undefined) return pokemon;
+        const newMaxHp = calculateStat(pokemon.baseStats.hp, level, true, pokemon.name);
         return { ...pokemon, level, maxHp: newMaxHp, currentHp: newMaxHp };
     };
-
     const togglePlayerTrainerSelection = (trainerId) => {
         const newIds = playerTrainerIds.includes(trainerId) ? playerTrainerIds.filter(id => id !== trainerId) : [...playerTrainerIds, trainerId];
         if (newIds.length > numTrainers) {
@@ -135,7 +134,10 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
     };
 
     const togglePlayerPokemonSelection = (pokemon) => {
-        const scaledPokemon = { ...scalePokemonToLevel(pokemon, selectedCampaign.partyLevel), originalTrainerId: pokemon.originalTrainerId };
+        // This new line safely gets the partyLevel from either the root or defaultPermissions.
+        const partyLevel = selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
+        const scaledPokemon = { ...scalePokemonToLevel(pokemon, partyLevel), originalTrainerId: pokemon.originalTrainerId };
+
         if (playerTeam.some(p => p.id === pokemon.id)) {
             setPlayerTeam(currentTeam => currentTeam.filter(p => p.id !== pokemon.id));
         } else {
@@ -153,7 +155,9 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
     };
 
     const toggleOpponentPokemonSelection = (pokemon) => {
-        const scaledPokemon = scalePokemonToLevel(pokemon, selectedCampaign.partyLevel);
+        // This line is now fixed to safely find the party level from both possible locations.
+        const partyLevel = selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
+        const scaledPokemon = scalePokemonToLevel(pokemon, partyLevel);
         setOpponentTeam(currentTeam => {
             if (currentTeam.some(p => p.id === scaledPokemon.id)) { return currentTeam.filter(p => p.id !== scaledPokemon.id); }
             if (currentTeam.length < MAX_PARTY_SIZE) { return [...currentTeam, scaledPokemon]; }
@@ -164,10 +168,16 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
     const handleWildPokemonSelect = async (pokemonName) => {
         dispatch({ type: 'SET_LOADING', payload: `Fetching ${pokemonName}...` });
         try {
+            // This new line safely gets the partyLevel here as well.
+            const partyLevel = selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
             let pokemonData;
             const customMatch = customPokemon.find(p => p.name.toLowerCase() === pokemonName.toLowerCase());
-            if (customMatch) { pokemonData = { ...customMatch }; }
-            else { pokemonData = await fetchPokemonData(pokemonName, selectedCampaign.partyLevel, '', customMoves); }
+            if (customMatch) {
+                // This is the fix: we now assign a level to the custom pokemon.
+                pokemonData = { ...customMatch, level: partyLevel };
+            } else {
+                pokemonData = await fetchPokemonData(pokemonName, partyLevel, '', customMoves);
+            }
             setEditingWildPokemon(pokemonData);
             setWildPokemonToAdd('');
         } catch (e) { dispatch({ type: 'SET_ERROR', payload: e.message }); }
@@ -202,11 +212,86 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
         ];
         setOpponentTeam(reorderedTeam);
     };
+    const removeUndefinedValues = (obj) => {
+        if (typeof obj !== 'object' || obj === null) {
+            return obj;
+        }
+
+        if (Array.isArray(obj)) {
+            return obj.map(removeUndefinedValues).filter(v => v !== undefined);
+        }
+
+        const newObj = {};
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                const value = obj[key];
+                if (value !== undefined) {
+                    const sanitizedValue = removeUndefinedValues(value);
+                    if (sanitizedValue !== undefined) {
+                        newObj[key] = sanitizedValue;
+                    }
+                }
+            }
+        }
+        return newObj;
+    };
+    const findInvalidFirestoreData = (obj, path = '') => {
+        if (obj === undefined) {
+            console.error(`INVALID DATA FOUND: Path '${path}' has an 'undefined' value.`);
+            return;
+        }
+
+        if (obj === null || typeof obj !== 'object') {
+            return; // Valid primitive, do nothing
+        }
+
+        if (obj.constructor.name !== 'Object' && obj.constructor.name !== 'Array') {
+            console.error(`INVALID DATA FOUND: Path '${path}' is a custom class or non-plain object ('${obj.constructor.name}').`);
+        }
+
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                const newPath = path ? `${path}.${key}` : key;
+                const value = obj[key];
+
+                if (typeof value === 'function') {
+                    console.error(`INVALID DATA FOUND: Path '${newPath}' is a function.`);
+                } else {
+                    findInvalidFirestoreData(value, newPath);
+                }
+            }
+        }
+    };
+    const addCalculatedStats = (pokemon) => {
+        if (!pokemon || !pokemon.baseStats) return pokemon;
+
+        const level = pokemon.level || selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
+
+        const calculatedStats = {
+            hp: calculateStat(pokemon.baseStats.hp, pokemon.level, true, pokemon.name),
+            attack: calculateStat(pokemon.baseStats.attack, pokemon.level),
+            defense: calculateStat(pokemon.baseStats.defense, pokemon.level),
+            'special-attack': calculateStat(pokemon.baseStats['special-attack'], pokemon.level),
+            'special-defense': calculateStat(pokemon.baseStats['special-defense'], pokemon.level),
+            speed: calculateStat(pokemon.baseStats.speed, pokemon.level),
+        };
+
+        return {
+            ...pokemon,
+            level: level,
+            stats: calculatedStats,
+            maxHp: calculatedStats.hp,
+            currentHp: calculatedStats.hp,
+            fainted: false,
+            stat_stages: pokemon.stat_stages || { attack: 0, defense: 0, 'special-attack': 0, 'special-defense': 0, speed: 0, accuracy: 0, evasion: 0 },
+            switchInEffectsResolved: false // This initializes the crucial flag
+        };
+    };
     const startBattle = async () => {
         dispatch({ type: 'SET_LOADING', payload: 'Creating battle...' });
         const resetPokemon = (p) => ({ ...p, currentHp: p.maxHp, fainted: false });
-        const freshPlayerTeam = playerTeam.map(resetPokemon);
-        let freshOpponentTeam = opponentTeam.map(resetPokemon);
+        const freshPlayerTeam = playerTeam.map(addCalculatedStats);
+        let freshOpponentTeam = opponentTeam.map(addCalculatedStats);
         if (battleType === 'BOSS' && opponentTrainer.finalPokemon) {
             const freshFinalPokemon = resetPokemon(scalePokemonToLevel(opponentTrainer.finalPokemon, selectedCampaign.partyLevel));
             freshOpponentTeam = [...freshOpponentTeam, freshFinalPokemon];
@@ -214,31 +299,75 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
         if (freshPlayerTeam.length === 0 || freshOpponentTeam.length === 0) {
             dispatch({ type: 'SET_ERROR', payload: `Both teams must have Pokémon.` }); return;
         }
-        const opponentActiveCount = battleType === 'WILD' ? freshOpponentTeam.length : Math.min(freshOpponentTeam.length, numTrainers);
         const battleId = `battle-${crypto.randomUUID()}`;
+        const playerTeamId = 'players';
+        const opponentTeamId = opponentTrainer?.id || 'wild';
+
+        // 2. Determine the number of active Pokémon for the opponent.
+        const opponentActiveCount = battleType === 'WILD'
+            ? freshOpponentTeam.length
+            : Math.min(freshOpponentTeam.length, numTrainers);
         const battleState = {
             id: battleId,
             teams: [
-                { id: 'players', name: selectedPlayerTrainers.map(t => t.name).join(' & '), pokemon: freshPlayerTeam, trainerIds: playerTrainerIds },
-                { id: opponentTrainer?.id || 'wild', name: opponentTrainer?.name || 'Wild Pokémon', pokemon: freshOpponentTeam }
+                { id: playerTeamId, name: selectedPlayerTrainers.map(t => t.name).join(' & '), pokemon: freshPlayerTeam, trainerIds: playerTrainerIds },
+                { id: opponentTeamId, name: opponentTrainer?.name || 'Wild Pokémon', pokemon: freshOpponentTeam }
             ],
-            log: [{ type: 'text', text: `A battle is starting!` }], turn: 1, phase: 'ACTION_SELECTION', gameOver: false,
-            field: { weather: 'none', weatherTurns: 0, terrain: 'none', terrainTurns: 0, trickRoomTurns: 0, magicRoomTurns: 0, gravityTurns: 0, wonderRoomTurns: 0, hazards: { players: {}, opponent: {} } },
+            log: [{ type: 'text', text: `A battle is starting!` }],
+            turn: 1,
+            phase: 'START_OF_BATTLE',
+            gameOver: false,
+            field: { weather: 'none', weatherTurns: 0, terrain: 'none', terrainTurns: 0, trickRoomTurns: 0, magicRoomTurns: 0, gravityTurns: 0, wonderRoomTurns: 0, hazards: { [playerTeamId]: {}, [opponentTeamId]: {} } }, // Use dynamic keys for hazards too
             startOfBattleAbilitiesResolved: false,
             activePokemonIndices: {
-                players: Array.from({ length: Math.min(freshPlayerTeam.length, numTrainers) }, (_, i) => i),
-                opponent: Array.from({ length: opponentActiveCount }, (_, i) => i)
+                // Use the variables to ensure the keys match the team IDs exactly.
+                [playerTeamId]: Array.from({ length: Math.min(freshPlayerTeam.length, numTrainers) }, (_, i) => i),
+                [opponentTeamId]: Array.from({ length: opponentActiveCount }, (_, i) => i)
             },
-            ownerId: state.user?.uid
+            ownerId: state.user?.uid || null
         };
         try {
+            const batch = writeBatch(db);
+
+            // 1. Set the main battle document
+            const sanitizedBattleState = removeUndefinedValues(battleState);
             const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
-            await setDoc(battleDocRef, battleState);
+            batch.set(battleDocRef, sanitizedBattleState);
+
+            // 2. Identify all unique trainers involved
+            const allInvolvedTrainers = [...selectedPlayerTrainers];
+            if (opponentTrainer) {
+                allInvolvedTrainers.push(opponentTrainer);
+            }
+            const uniqueTrainers = [...new Map(allInvolvedTrainers.map(t => [t.id, t])).values()];
+
+            // 3. For each trainer, copy their data to the public artifacts collection
+            uniqueTrainers.forEach(trainer => {
+                const publicTrainerRef = doc(db, `artifacts/${appId}/public/data/trainers`, trainer.id);
+                // We only need a subset of data for the simulator
+                const publicTrainerData = {
+                    id: trainer.id,
+                    name: trainer.name,
+                    // The simulator doesn't need the full roster, bag, etc., just the name.
+                    // You can add more fields here if the simulator needs them later.
+                };
+                batch.set(publicTrainerRef, publicTrainerData);
+            });
+
+            // 4. Commit all writes at once
+            await batch.commit();
+
             const simulatorUrl = new URL(window.location.href);
             simulatorUrl.pathname = '/simulator';
             simulatorUrl.search = `?battleId=${battleId}`;
             setGeneratedBattle({ id: battleId, url: simulatorUrl.href });
         } catch (e) {
+            // --- THIS IS THE MODIFIED PART ---
+            console.error("Firestore write failed. Starting data validation...");
+            findInvalidFirestoreData(battleState); // Run the validator on the object
+            console.error("Validation complete. See any messages above for the specific path to the invalid data.", e);
+            // --- END MODIFICATION ---
+
             dispatch({ type: 'SET_ERROR', payload: `Failed to create battle: ${e.message}` });
         } finally {
             dispatch({ type: 'SET_LOADING', payload: null });

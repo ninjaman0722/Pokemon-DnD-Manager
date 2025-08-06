@@ -9,9 +9,25 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
     const [showTransformChoice, setShowTransformChoice] = useState(false);
     const { teams, activePokemonIndices } = battleState;
     const [playerTeam, opponentTeam] = teams;
-    const getActivePokemon = (team, indices) => indices.map(i => team.pokemon[i]).filter(p => p && !p.fainted);
-    const playerActivePokemon = getActivePokemon(playerTeam, activePokemonIndices.players);
-    const opponentActivePokemon = getActivePokemon(opponentTeam, activePokemonIndices.opponent);
+
+    const getActivePokemon = (team, indices) => {
+        // A guard clause to prevent this error from ever happening again.
+        if (!indices) return [];
+        return indices.map(i => team.pokemon[i]).filter(p => p && !p.fainted);
+    };
+
+    // The key for the player's active indices is 'players'.
+    const playerIndices = activePokemonIndices.players || [];
+
+    // The key for the opponent's indices is their actual team ID (e.g., 'wild').
+    const opponentKey = opponentTeam?.id;
+    const opponentIndices = (opponentKey && activePokemonIndices[opponentKey]) ? activePokemonIndices[opponentKey] : [];
+
+    // Now we use these safe variables to get the active Pokémon.
+    const playerActivePokemon = getActivePokemon(playerTeam, playerIndices);
+    const opponentActivePokemon = getActivePokemon(opponentTeam, opponentIndices);
+    // --- END CORRECTION ---
+
     const allActivePokemon = [...playerActivePokemon, ...opponentActivePokemon];
     const teamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
     const [localAction, setLocalAction] = useState(null);
@@ -51,7 +67,6 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
             onEnterTargetingMode(move, baseAction);
         }
     };
-
     const handleConfirmMultiHitMove = () => {
         if (!localAction || !localAction.hits) return;
         const uniqueTargetIds = [...new Set(localAction.hits.map(hit => hit.targetId).filter(Boolean))];
@@ -115,9 +130,9 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
 
     const isMoveDisabled = (move) => {
         if (move.pp === 0) return true;
-        if (pokemon.volatileStatuses?.includes('Taunt') && move.damage_class === 'status') return true;
-        if (pokemon.volatileStatuses?.includes('Encore') && move.name !== pokemon.encoredMove) return true;
-        if (pokemon.lockedMove && move.name !== pokemon.lockedMove) return true;
+        if (pokemon.volatileStatuses?.includes('Taunt') && move.damage_class.name === 'status') return true;
+        if (pokemon.encoredMove && move.name !== pokemon.encoredMove) return true;
+        if (pokemon.lockedMove?.id && move.id !== pokemon.lockedMove.id) return true;
         return false;
     };
 
@@ -135,49 +150,16 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
 
     const canUseBag = pokemon && pokemon.originalTrainerId;
     const currentTeam = battleState.teams.find(t => t.id === teamId);
-    const benched = currentTeam.pokemon.filter(p =>
-        !battleState.activePokemonIndices[currentTeam.id === 'players' ? 'players' : 'opponent'].includes(currentTeam.pokemon.indexOf(p)) &&
+    const activeIndicesForCurrentTeam = (currentTeam && battleState.activePokemonIndices[currentTeam.id]) || [];
+
+    const benched = currentTeam.pokemon.filter((p, i) =>
+        // Use the safe variable here to check if the Pokémon's index is NOT in the active list.
+        !activeIndicesForCurrentTeam.includes(i) &&
         !p.fainted &&
         p.originalTrainerId === pokemon.originalTrainerId
     );
     const isTrapped = pokemon.volatileStatuses?.some(s => s.name === 'Trapped') && pokemon.heldItem?.id !== 'shed-shell';
 
-    const renderTransformChoice = () => {
-        if (!showTransformChoice || availableTransforms.length === 0) return null;
-        return (
-            <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
-                <h3 className="text-2xl font-bold text-yellow-300 mb-4">Choose a Form</h3>
-                <div className="flex gap-4">
-                    {availableTransforms.map(form => (
-                        <button key={form.formName} onClick={() => handleSelectTransform(form)} className="bg-purple-600 hover:bg-purple-700 p-2 rounded flex flex-col items-center text-center text-white font-semibold">
-                            <img src={form.data.sprite} alt={form.formName} className="h-24 w-24" />
-                            <span className="mt-1 text-lg truncate">{form.formName}</span>
-                        </button>
-                    ))}
-                </div>
-                <button onClick={() => setShowTransformChoice(false)} className="mt-6 bg-gray-600 px-4 py-2 rounded">Cancel</button>
-            </div>
-        );
-    };
-    const availableTransforms = (pokemon.forms || []).filter(form => {
-        if (form.changeMethod !== 'BATTLE') return false;
-        if (form.triggerMove && pokemon.speciesName === 'rayquaza') {
-            return pokemon.moves.some(m => m.name.toLowerCase() === form.triggerMove.toLowerCase());
-        }
-        if (form.triggerItem && pokemon.heldItem?.id) {
-            return form.triggerItem.toLowerCase().replace(/\s/g, '-') === pokemon.heldItem.id;
-        }
-        return false;
-    });
-    const handleSelectTransform = (form) => {
-        onActionReady({
-            ...queuedAction,
-            type: 'TRANSFORM',
-            form,
-        });
-        setShowTransformChoice(false);
-    };
-    const canTransform = availableTransforms.length > 0;
     const renderContent = () => {
         switch (view) {
             case 'POKEMON':
@@ -221,63 +203,61 @@ const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, o
                         </div>
                     );
                 }
+        }
+        if (localAction) {
+            const selectedMove = localAction.move;
+            const moveId = selectedMove.name.toLowerCase().replace(/ /g, '-');
+            const moveHitData = MULTI_HIT_MOVES.get(moveId);
+            const showMultiHitControl = !!moveHitData;
+            const opponentTeam = battleState.teams.find(t => t.id !== teamId);
+            const validTargets = opponentTeam?.pokemon.filter(p => p && !p.fainted) || [];
+            return (
+                <div className="h-full flex flex-col p-2 space-y-3">
+                    <div className="flex justify-between items-center flex-shrink-0">
+                        <h3 className="text-xl font-bold text-yellow-300 capitalize">{selectedMove.name}</h3>
+                        <button onClick={handleCancelLocalAction} className="text-sm bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded">Change Move</button>
+                    </div>
 
-                if (localAction) {
-                    const selectedMove = localAction.move;
-                    const moveId = selectedMove.name.toLowerCase().replace(/ /g, '-');
-                    const moveHitData = MULTI_HIT_MOVES.get(moveId);
-                    const showMultiHitControl = !!moveHitData;
-                    const opponentTeam = battleState.teams.find(t => t.id !== teamId);
-                    const validTargets = opponentTeam?.pokemon.filter(p => p && !p.fainted) || [];
-
-                    return (
-                        <div className="h-full flex flex-col p-2 space-y-3">
-                            <div className="flex justify-between items-center flex-shrink-0">
-                                <h3 className="text-xl font-bold text-yellow-300 capitalize">{selectedMove.name}</h3>
-                                <button onClick={handleCancelLocalAction} className="text-sm bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded">Change Move</button>
-                            </div>
-
-                            <div className="flex-grow overflow-y-auto pr-3 space-y-3">
-                                {showMultiHitControl && (
-                                    <div className="p-3 border border-gray-700 rounded-lg bg-gray-800/50 space-y-2">
-                                        <div className="flex items-center gap-3">
-                                            <label className="text-sm font-bold text-white">Number of Hits:</label>
-                                            <input type="number" min={moveHitData[0]} max={moveHitData[1]} value={localAction.hits?.length || moveHitData[0]} onChange={(e) => handleNumberOfHitsChange(parseInt(e.target.value, 10))} className="w-16 bg-gray-700 border-gray-600 rounded text-center" />
-                                            <span className="text-xs text-gray-400">({moveHitData[0]}-{moveHitData[1]} hits)</span>
+                    <div className="flex-grow overflow-y-auto pr-3 space-y-3">
+                        {showMultiHitControl && (
+                            <div className="p-3 border border-gray-700 rounded-lg bg-gray-800/50 space-y-2">
+                                <div className="flex items-center gap-3">
+                                    <label className="text-sm font-bold text-white">Number of Hits:</label>
+                                    <input type="number" min={moveHitData[0]} max={moveHitData[1]} value={localAction.hits?.length || moveHitData[0]} onChange={(e) => handleNumberOfHitsChange(parseInt(e.target.value, 10))} className="w-16 bg-gray-700 border-gray-600 rounded text-center" />
+                                    <span className="text-xs text-gray-400">({moveHitData[0]}-{moveHitData[1]} hits)</span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                                    {localAction.hits?.map((hit, index) => (
+                                        <div key={index} className="flex flex-col p-1 bg-gray-900/50 rounded">
+                                            <label className="text-xs text-gray-400 mb-1">Hit {index + 1}</label>
+                                            <select value={hit.targetId} onChange={(e) => handleHitTargetChange(index, e.target.value)} className="bg-gray-700 border border-gray-600 rounded p-1 text-sm">
+                                                <option value="">- Target -</option>
+                                                {validTargets.map(target => (<option key={target.id} value={target.id}>{target.name}</option>))}
+                                            </select>
                                         </div>
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                                            {localAction.hits?.map((hit, index) => (
-                                                <div key={index} className="flex flex-col p-1 bg-gray-900/50 rounded">
-                                                    <label className="text-xs text-gray-400 mb-1">Hit {index + 1}</label>
-                                                    <select value={hit.targetId} onChange={(e) => handleHitTargetChange(index, e.target.value)} className="bg-gray-700 border border-gray-600 rounded p-1 text-sm">
-                                                        <option value="">- Target -</option>
-                                                        {validTargets.map(target => (<option key={target.id} value={target.id}>{target.name}</option>))}
-                                                    </select>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
+                                    ))}
+                                </div>
                             </div>
+                        )}
+                    </div>
 
-                            <div className="flex-shrink-0 text-center pt-2">
-                                {showMultiHitControl ? (
-                                    <button onClick={handleConfirmMultiHitMove} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg w-full">Confirm Move</button>
-                                ) : (
-                                    <p className="text-gray-400 italic">Please select target(s) on the battlefield.</p>
-                                )}
-                            </div>
-                        </div>
-                    );
-                }
-        };
+                    <div className="flex-shrink-0 text-center pt-2">
+                        {showMultiHitControl ? (
+                            <button onClick={handleConfirmMultiHitMove} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg w-full">Confirm Move</button>
+                        ) : (
+                            <p className="text-gray-400 italic">Please select target(s) on the battlefield.</p>
+                        )}
+                    </div>
+                </div>
+            );
+        }
         return (
             <div className="grid grid-cols-2 gap-2 h-full">
                 {pokemon.moves.map(move => {
                     const disabled = isMoveDisabled(move);
                     const typeColor = TYPE_COLORS[move.type] || 'bg-gray-500';
                     return (
-                        <button key={move.name} onClick={() => handleSelectMove(move)} disabled={disabled} className={`${typeColor} p-2 rounded capitalize font-semibold shadow-md text-lg flex flex-col justify-center items-center disabled:bg-gray-600`}>
+                        <button key={move.id} onClick={() => handleSelectMove(move)} disabled={disabled} className={`${typeColor} p-2 rounded capitalize font-semibold shadow-md text-lg flex flex-col justify-center items-center disabled:bg-gray-600`}>
                             <span>{move.name}</span>
                             <span className="text-xs opacity-80">{move.pp}/{move.maxPp} PP</span>
                         </button>

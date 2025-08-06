@@ -27,21 +27,40 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
         isProcessingTurn,
         handlePrepareTurn,
         handleConfirmAndExecuteTurn, // This function will be new
-        handleSwitchIn
+        handleSwitchIn,
+        handleStartOfBattle,
     } = useBattleEngine(
         battleState, battleId, allTrainers, queuedActions, setQueuedActions, setTurnOrder,
         // Pass the new state setters to the hook
         setIsResolutionModalOpen, setResolutionData
     );
-
+    useEffect(() => {
+        // When the component first loads, if the phase is START_OF_BATTLE, run the handler.
+        if (battleState && battleState.phase === 'START_OF_BATTLE') {
+            handleStartOfBattle();
+        }
+    }, [battleState?.phase]);
     const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
     const { teams, log, activePokemonIndices, phase, replacementInfo, field } = battleState;
     const [playerTeam, opponentTeam] = teams;
 
-    const getActivePokemon = (team, indices) => indices.map(i => team.pokemon[i]).filter(p => p && !p.fainted);
+    const getActivePokemon = (team, indices) => {
+        // Add a guard clause to prevent this error from ever happening again
+        if (!indices) return [];
+        return indices.map(i => team.pokemon[i]).filter(p => p && !p.fainted);
+    };
 
-    const playerActivePokemon = useMemo(() => getActivePokemon(playerTeam, activePokemonIndices.players), [playerTeam, activePokemonIndices.players]);
-    const opponentActivePokemon = useMemo(() => getActivePokemon(opponentTeam, activePokemonIndices.opponent), [opponentTeam, activePokemonIndices.opponent]);
+    // The key for the player's active indices is 'players'.
+    const playerIndices = activePokemonIndices.players || [];
+
+    // The key for the opponent's indices is their actual team ID (e.g., 'wild').
+    const opponentKey = opponentTeam?.id;
+    const opponentIndices = (opponentKey && activePokemonIndices[opponentKey]) ? activePokemonIndices[opponentKey] : [];
+
+    // Now we use these safe variables to get the active Pokémon.
+    const playerActivePokemon = getActivePokemon(playerTeam, playerIndices);
+    const opponentActivePokemon = getActivePokemon(opponentTeam, opponentIndices);
+
     const allActivePokemon = useMemo(() => [...playerActivePokemon, ...opponentActivePokemon], [playerActivePokemon, opponentActivePokemon]);
     const [targetingInfo, setTargetingInfo] = useState({ isActive: false, potential: [], selected: [], baseAction: null });
     const handleTargetSelection = (targetId) => {
@@ -75,7 +94,7 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
         updateQueuedAction({ // <-- CORRECTED
             ...targetingInfo.baseAction,
             targetIds: targetingInfo.selected,
-            hits: targetingInfo.baseAction.hits?.map((_, i) => ({ targetId: targetingInfo.selected[i % targetingInfo.selected.length] })) || targetingInfo.selected.map(id => ({ targetId: id }))
+            hits: targetingInfo.selected.map(id => ({ targetId: id })) 
         });
         setTargetingInfo({ isActive: false, potential: [], selected: [], baseAction: null });
     };
@@ -150,7 +169,9 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     };
 
     const controllablePokemon = [...playerActivePokemon, ...(opponentTeam.name !== 'Wild Pokémon' || !isAiEnabled ? opponentActivePokemon : [])];
-    const allActionsQueued = controllablePokemon.every(p => queuedActions[p.id]);
+    const allActionsQueued = controllablePokemon.every(p =>
+        queuedActions[p.id] || p.chargingMove || p.lockedMove
+    );
 
     const handleConfirmResolution = (dmOverrides) => {
         setIsResolutionModalOpen(false);

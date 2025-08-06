@@ -1,6 +1,6 @@
 import { TYPE_CHART, GUARANTEED_CRIT_MOVES } from '../../config/gameData';
-import { abilityEffects } from '../../config/abilityEffects';
-import * as itemEffectsManager from '../../config/itemEffects';
+import { abilityEffects } from './abilityEffects';
+import * as itemEffectsManager from './itemEffects';
 import { getEffectiveAbility, getStatModifier } from './battleUtils';
 import { calculateStatChange } from './stateModifiers';
 
@@ -20,6 +20,17 @@ export const getZMovePower = (basePower) => {
 };
 
 export const calculateDamage = (attacker, defender, move, isCritical, currentBattleState, newLog) => {
+    const weather = currentBattleState.field.weather;
+    if (move.damage_class.name !== 'status') {
+        if (weather === 'harsh-sunshine' && move.type === 'water') {
+            newLog.push({ type: 'text', text: "The Water-type attack evaporated in the harsh sunlight!" });
+            return { damage: 0, effectiveness: 0, move: move }; // Move fails
+        }
+        if (weather === 'heavy-rain' && move.type === 'fire') {
+            newLog.push({ type: 'text', text: "The Fire-type attack was extinguished by the heavy rain!" });
+            return { damage: 0, effectiveness: 0, move: move }; // Move fails
+        }
+    }
     const defenderAbilityId = getEffectiveAbility(defender, currentBattleState)?.id;
     const attackerAbilityId = getEffectiveAbility(attacker, currentBattleState)?.id;
     const isImmuneToCrits = abilityEffects[defenderAbilityId]?.onCritImmunity?.(defender, move, attackerAbilityId);

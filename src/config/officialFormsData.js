@@ -5,7 +5,7 @@ export const officialFormsData = {
     {
       "formName": "venusaur-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Venusaurite",
+      "triggerItem": "venusaurite",
       "data": {
         "speciesName": "venusaur-mega",
         "name": "Venusaur Mega",
@@ -33,7 +33,7 @@ export const officialFormsData = {
     {
       "formName": "charizard-mega-x",
       "changeMethod": "BATTLE",
-      "triggerItem": "Charizardite X",
+      "triggerItem": "charizardite-x",
       "data": {
         "speciesName": "charizard-mega-x",
         "name": "Charizard Mega X",
@@ -59,7 +59,7 @@ export const officialFormsData = {
     {
       "formName": "charizard-mega-y",
       "changeMethod": "BATTLE",
-      "triggerItem": "Charizardite Y",
+      "triggerItem": "charizardite-y",
       "data": {
         "speciesName": "charizard-mega-y",
         "name": "Charizard Mega Y",
@@ -87,7 +87,7 @@ export const officialFormsData = {
     {
       "formName": "blastoise-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Blastoisinite",
+      "triggerItem": "blastoisinite",
       "data": {
         "speciesName": "blastoise-mega",
         "name": "Blastoise Mega",
@@ -114,7 +114,7 @@ export const officialFormsData = {
     {
       "formName": "alakazam-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Alakazite",
+      "triggerItem": "alakazite",
       "data": {
         "speciesName": "alakazam-mega",
         "name": "Alakazam Mega",
@@ -141,7 +141,7 @@ export const officialFormsData = {
     {
       "formName": "gengar-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Gengarite",
+      "triggerItem": "gengarite",
       "data": {
         "speciesName": "gengar-mega",
         "name": "Gengar Mega",
@@ -169,7 +169,7 @@ export const officialFormsData = {
     {
       "formName": "kangaskhan-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Kangaskhanite",
+      "triggerItem": "kangaskhanite",
       "data": {
         "speciesName": "kangaskhan-mega",
         "name": "Kangaskhan Mega",
@@ -196,7 +196,7 @@ export const officialFormsData = {
     {
       "formName": "pinsir-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Pinsirite",
+      "triggerItem": "pinsirite",
       "data": {
         "speciesName": "pinsir-mega",
         "name": "Pinsir Mega",
@@ -224,7 +224,7 @@ export const officialFormsData = {
     {
       "formName": "gyarados-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Gyaradosite",
+      "triggerItem": "gyaradosite",
       "data": {
         "speciesName": "gyarados-mega",
         "name": "Gyarados Mega",
@@ -252,7 +252,7 @@ export const officialFormsData = {
     {
       "formName": "aerodactyl-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Aerodactylite",
+      "triggerItem": "aerodactylite",
       "data": {
         "speciesName": "aerodactyl-mega",
         "name": "Aerodactyl Mega",
@@ -280,7 +280,7 @@ export const officialFormsData = {
     {
       "formName": "mewtwo-mega-x",
       "changeMethod": "BATTLE",
-      "triggerItem": "Mewtwonite X",
+      "triggerItem": "mewtwonite-x",
       "data": {
         "speciesName": "mewtwo-mega-x",
         "name": "Mewtwo Mega X",
@@ -306,7 +306,7 @@ export const officialFormsData = {
     {
       "formName": "mewtwo-mega-y",
       "changeMethod": "BATTLE",
-      "triggerItem": "Mewtwonite Y",
+      "triggerItem": "mewtwonite-y",
       "data": {
         "speciesName": "mewtwo-mega-y",
         "name": "Mewtwo Mega Y",
@@ -333,7 +333,7 @@ export const officialFormsData = {
     {
       "formName": "ampharos-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Ampharosite",
+      "triggerItem": "ampharosite",
       "data": {
         "speciesName": "ampharos-mega",
         "name": "Ampharos Mega",
@@ -361,7 +361,7 @@ export const officialFormsData = {
     {
       "formName": "scizor-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Scizorite",
+      "triggerItem": "scizorite",
       "data": {
         "speciesName": "scizor-mega",
         "name": "Scizor Mega",
@@ -389,7 +389,7 @@ export const officialFormsData = {
     {
       "formName": "heracross-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Heracronite",
+      "triggerItem": "heracronite",
       "data": {
         "speciesName": "heracross-mega",
         "name": "Heracross Mega",
@@ -417,7 +417,7 @@ export const officialFormsData = {
     {
       "formName": "houndoom-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Houndoominite",
+      "triggerItem": "houndoominite",
       "data": {
         "speciesName": "houndoom-mega",
         "name": "Houndoom Mega",
@@ -445,7 +445,7 @@ export const officialFormsData = {
     {
       "formName": "tyranitar-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Tyranitarite",
+      "triggerItem": "tyranitarite",
       "data": {
         "speciesName": "tyranitar-mega",
         "name": "Tyranitar Mega",
@@ -473,7 +473,7 @@ export const officialFormsData = {
     {
       "formName": "blaziken-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Blazikenite",
+      "triggerItem": "blazikenite",
       "data": {
         "speciesName": "blaziken-mega",
         "name": "Blaziken Mega",
@@ -501,7 +501,7 @@ export const officialFormsData = {
     {
       "formName": "gardevoir-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Gardevoirite",
+      "triggerItem": "gardevoirite",
       "data": {
         "speciesName": "gardevoir-mega",
         "name": "Gardevoir Mega",
@@ -529,7 +529,7 @@ export const officialFormsData = {
     {
       "formName": "mawile-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Mawilite",
+      "triggerItem": "mawilite",
       "data": {
         "speciesName": "mawile-mega",
         "name": "Mawile Mega",
@@ -557,7 +557,7 @@ export const officialFormsData = {
     {
       "formName": "aggron-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Aggronite",
+      "triggerItem": "aggronite",
       "data": {
         "speciesName": "aggron-mega",
         "name": "Aggron Mega",
@@ -584,7 +584,7 @@ export const officialFormsData = {
     {
       "formName": "medicham-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Medichamite",
+      "triggerItem": "medichamite",
       "data": {
         "speciesName": "medicham-mega",
         "name": "Medicham Mega",
@@ -612,7 +612,7 @@ export const officialFormsData = {
     {
       "formName": "manectric-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Manectite",
+      "triggerItem": "manectite",
       "data": {
         "speciesName": "manectric-mega",
         "name": "Manectric Mega",
@@ -639,7 +639,7 @@ export const officialFormsData = {
     {
       "formName": "banette-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Banettite",
+      "triggerItem": "banettite",
       "data": {
         "speciesName": "banette-mega",
         "name": "Banette Mega",
@@ -666,7 +666,7 @@ export const officialFormsData = {
     {
       "formName": "absol-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Absolite",
+      "triggerItem": "absolite",
       "data": {
         "speciesName": "absol-mega",
         "name": "Absol Mega",
@@ -693,7 +693,7 @@ export const officialFormsData = {
     {
       "formName": "garchomp-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Garchompite",
+      "triggerItem": "garchompite",
       "data": {
         "speciesName": "garchomp-mega",
         "name": "Garchomp Mega",
@@ -721,7 +721,7 @@ export const officialFormsData = {
     {
       "formName": "lucario-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Lucarionite",
+      "triggerItem": "lucarionite",
       "data": {
         "speciesName": "lucario-mega",
         "name": "Lucario Mega",
@@ -749,7 +749,7 @@ export const officialFormsData = {
     {
       "formName": "abomasnow-mega",
       "changeMethod": "BATTLE",
-      "triggerItem": "Abomasite",
+      "triggerItem": "abomasite",
       "data": {
         "speciesName": "abomasnow-mega",
         "name": "Abomasnow Mega",
@@ -777,7 +777,7 @@ export const officialFormsData = {
     {
       "formName": "kyogre-primal",
       "changeMethod": "BATTLE",
-      "triggerItem": "Blue Orb",
+      "triggerItem": "blue-orb",
       "data": {
         "speciesName": "kyogre-primal",
         "name": "Kyogre Primal",
@@ -804,7 +804,7 @@ export const officialFormsData = {
     {
       "formName": "groudon-primal",
       "changeMethod": "BATTLE",
-      "triggerItem": "Red Orb",
+      "triggerItem": "red-orb",
       "data": {
         "speciesName": "groudon-primal",
         "name": "Groudon Primal",
@@ -936,7 +936,7 @@ export const officialFormsData = {
           "special-defense": 105,
           "speed": 55
         },
-        "ability": "zen-mode",
+        "ability": "sheer-force",
         "sprites": {
           "front_default": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/10017.png",
           "front_shiny": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/555-zen.png"
@@ -965,7 +965,7 @@ export const officialFormsData = {
           "special-defense": 55,
           "speed": 135
         },
-        "ability": "zen-mode",
+        "ability": "gorilla-tactics",
         "sprites": {
           "front_default": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/10178.png",
           "front_shiny": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10178.png"
@@ -1264,7 +1264,7 @@ export const officialFormsData = {
     {
       "formName": "zacian-crowned",
       "changeMethod": "BATTLE",
-      "triggerItem": "Rusted Sword",
+      "triggerItem": "rusted-sword",
       "data": {
         "speciesName": "zacian-crowned",
         "name": "Zacian Crowned",
@@ -1292,7 +1292,7 @@ export const officialFormsData = {
     {
       "formName": "zamazenta-crowned",
       "changeMethod": "BATTLE",
-      "triggerItem": "Rusted Shield",
+      "triggerItem": "rusted-shield",
       "data": {
         "speciesName": "zamazenta-crowned",
         "name": "Zamazenta Crowned",
@@ -1320,7 +1320,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-fighting",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Fist Plate",
+      "triggerItem": "fist-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-fighting",
@@ -1346,7 +1346,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-flying",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Sky Plate",
+      "triggerItem": "sky-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-flying",
@@ -1372,7 +1372,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-poison",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Toxic Plate",
+      "triggerItem": "toxic-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-poison",
@@ -1398,7 +1398,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-ground",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Earth Plate",
+      "triggerItem": "earth-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-ground",
@@ -1424,7 +1424,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-rock",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Stone Plate",
+      "triggerItem": "stone-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-rock",
@@ -1450,7 +1450,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-bug",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Insect Plate",
+      "triggerItem": "insect-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-bug",
@@ -1476,7 +1476,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-ghost",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Spooky Plate",
+      "triggerItem": "spooky-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-ghost",
@@ -1502,7 +1502,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-steel",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Iron Plate",
+      "triggerItem": "iron-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-steel",
@@ -1528,7 +1528,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-fire",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Flame Plate",
+      "triggerItem": "flame-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-fire",
@@ -1554,7 +1554,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-water",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Splash Plate",
+      "triggerItem": "splash-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-water",
@@ -1580,7 +1580,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-grass",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Meadow Plate",
+      "triggerItem": "meadow-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-grass",
@@ -1606,7 +1606,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-electric",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Zap Plate",
+      "triggerItem": "zap-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-electric",
@@ -1632,7 +1632,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-psychic",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Mind Plate",
+      "triggerItem": "mind-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-psychic",
@@ -1658,7 +1658,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-ice",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Icicle Plate",
+      "triggerItem": "icicle-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-ice",
@@ -1684,7 +1684,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-dragon",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Draco Plate",
+      "triggerItem": "draco-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-dragon",
@@ -1710,7 +1710,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-dark",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Dread Plate",
+      "triggerItem": "dread-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-dark",
@@ -1736,7 +1736,7 @@ export const officialFormsData = {
     {
       "formName": "arceus-fairy",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Pixie Plate",
+      "triggerItem": "pixie-plate",
       "apiDataSource": "arceus",
       "data": {
         "speciesName": "arceus-fairy",
@@ -1764,7 +1764,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-fighting",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Fighting Memory",
+      "triggerItem": "fighting-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-fighting",
@@ -1790,7 +1790,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-flying",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Flying Memory",
+      "triggerItem": "flying-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-flying",
@@ -1816,7 +1816,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-poison",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Poison Memory",
+      "triggerItem": "poison-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-poison",
@@ -1842,7 +1842,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-ground",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Ground Memory",
+      "triggerItem": "ground-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-ground",
@@ -1868,7 +1868,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-rock",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Rock Memory",
+      "triggerItem": "rock-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-rock",
@@ -1894,7 +1894,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-bug",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Bug Memory",
+      "triggerItem": "bug-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-bug",
@@ -1920,7 +1920,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-ghost",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Ghost Memory",
+      "triggerItem": "ghost-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-ghost",
@@ -1946,7 +1946,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-steel",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Steel Memory",
+      "triggerItem": "steel-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-steel",
@@ -1972,7 +1972,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-fire",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Fire Memory",
+      "triggerItem": "fire-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-fire",
@@ -1998,7 +1998,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-water",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Water Memory",
+      "triggerItem": "water-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-water",
@@ -2024,7 +2024,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-grass",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Grass Memory",
+      "triggerItem": "grass-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-grass",
@@ -2050,7 +2050,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-electric",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Electric Memory",
+      "triggerItem": "electric-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-electric",
@@ -2076,7 +2076,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-psychic",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Psychic Memory",
+      "triggerItem": "psychic-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-psychic",
@@ -2102,7 +2102,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-ice",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Ice Memory",
+      "triggerItem": "ice-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-ice",
@@ -2128,7 +2128,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-dragon",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Dragon Memory",
+      "triggerItem": "dragon-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-dragon",
@@ -2154,7 +2154,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-dark",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Dark Memory",
+      "triggerItem": "dark-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-dark",
@@ -2180,7 +2180,7 @@ export const officialFormsData = {
     {
       "formName": "silvally-fairy",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Fairy Memory",
+      "triggerItem": "fairy-memory",
       "apiDataSource": "silvally",
       "data": {
         "speciesName": "silvally-fairy",
@@ -2208,7 +2208,7 @@ export const officialFormsData = {
     {
       "formName": "genesect-douse",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Douse Drive",
+      "triggerItem": "douse-drive",
       "apiDataSource": "genesect",
       "data": {
         "speciesName": "genesect-douse",
@@ -2235,7 +2235,7 @@ export const officialFormsData = {
     {
       "formName": "genesect-shock",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Shock Drive",
+      "triggerItem": "shock-drive",
       "apiDataSource": "genesect",
       "data": {
         "speciesName": "genesect-shock",
@@ -2262,7 +2262,7 @@ export const officialFormsData = {
     {
       "formName": "genesect-burn",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Burn Drive",
+      "triggerItem": "burn-drive",
       "apiDataSource": "genesect",
       "data": {
         "speciesName": "genesect-burn",
@@ -2289,7 +2289,7 @@ export const officialFormsData = {
     {
       "formName": "genesect-chill",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Chill Drive",
+      "triggerItem": "chill-drive",
       "apiDataSource": "genesect",
       "data": {
         "speciesName": "genesect-chill",
@@ -2319,7 +2319,7 @@ export const officialFormsData = {
       "formName": "giratina-origin",
       "apiDataSource": "giratina-origin",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Griseous Orb",
+      "triggerItem": "griseous-orb",
       "data": {
         "speciesName": "giratina-origin",
         "name": "Giratina Origin",
@@ -2348,7 +2348,7 @@ export const officialFormsData = {
       "formName": "dialga-origin",
       "apiDataSource": "dialga-origin",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Adamant Crystal",
+      "triggerItem": "adamant-crystal",
       "data": {
         "speciesName": "dialga-origin",
         "name": "Dialga Origin",
@@ -2377,7 +2377,7 @@ export const officialFormsData = {
       "formName": "palkia-origin",
       "apiDataSource": "palkia-origin",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Lustrous Globe",
+      "triggerItem": "lustrous-globe",
       "data": {
         "speciesName": "palkia-origin",
         "name": "Palkia Origin",
@@ -2406,7 +2406,7 @@ export const officialFormsData = {
       "formName": "ogerpon-wellspring-mask",
       "apiDataSource": "ogerpon-wellspring-mask",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Wellspring Mask",
+      "triggerItem": "wellspring-mask",
       "data": {
         "speciesName": "ogerpon-wellspring-mask",
         "name": "Ogerpon Wellspring Mask",
@@ -2433,7 +2433,7 @@ export const officialFormsData = {
       "formName": "ogerpon-hearthflame-mask",
       "apiDataSource": "ogerpon-hearthflame-mask",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Hearthflame Mask",
+      "triggerItem": "hearthflame-mask",
       "data": {
         "speciesName": "ogerpon-hearthflame-mask",
         "name": "Ogerpon Hearthflame Mask",
@@ -2460,7 +2460,7 @@ export const officialFormsData = {
       "formName": "ogerpon-cornerstone-mask",
       "apiDataSource": "ogerpon-cornerstone-mask",
       "changeMethod": "ITEM_HOLD",
-      "triggerItem": "Cornerstone Mask",
+      "triggerItem": "cornerstone-mask",
       "data": {
         "speciesName": "ogerpon-cornerstone-mask",
         "name": "Ogerpon Cornerstone Mask",

@@ -11,11 +11,11 @@
  * @param {object} [move] - The move being used, when applicable.
  * @param {number} [damage] - The calculated damage, when applicable.
  */
-import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTABLE_MOVES, CONTACT_MOVES, SOUND_MOVES } from './gameData';
-import { calculateStatChange } from '../hooks/battle-engine/stateModifiers';
-import { calculateStat } from '../utils/api';
-import { getStatModifier, getEffectiveAbility } from '../hooks/battle-engine/battleUtils';
-import { resolveChance } from '../hooks/battle-engine/battleUtils';
+import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTABLE_MOVES, CONTACT_MOVES, SOUND_MOVES } from '../../config/gameData';
+import { calculateStatChange } from './stateModifiers';
+import { calculateStat } from '../../utils/api';
+import { getStatModifier, getEffectiveAbility } from './battleUtils';
+import { resolveChance } from './battleUtils';
 // --- Helper Functions ---
 const getActiveOpponents = (pokemon, battleState, newLog) => {
     const pokemonTeamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
@@ -27,11 +27,35 @@ const getActiveOpponents = (pokemon, battleState, newLog) => {
     return opponentTeam.pokemon.filter((p, i) => battleState.activePokemonIndices[opponentKey].includes(i) && p && !p.fainted);
 };
 
+const getActiveAllies = (pokemon, battleState) => {
+    // 1. Find the team the Pokémon belongs to.
+    const pokemonTeam = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id));
+    if (!pokemonTeam) return [];
+
+    // 2. Get the indices of all Pokémon active on that team.
+    const activeIndicesOnTeam = battleState.activePokemonIndices[pokemonTeam.id] || [];
+
+    // 3. Return all active Pokémon on that team, excluding the Healer Pokémon itself.
+    return pokemonTeam.pokemon.filter((p, i) =>
+        activeIndicesOnTeam.includes(i) && // Is the Pokémon active?
+        p &&                              // Does it exist?
+        !p.fainted &&                     // Is it not fainted?
+        p.id !== pokemon.id               // Is it not the user of the ability?
+    );
+};
+
 const setWeather = (weatherType, turns, message, pokemon, battleState, newLog) => {
-    if (battleState.field.weather !== weatherType && battleState.field.weather !== 'strong-winds') {
+    const strongWeathers = ['heavy-rain', 'harsh-sunshine', 'strong-winds'];
+    const currentWeather = battleState.field.weather;
+    if (currentWeather === weatherType) {
+        return;
+    }
+    if (!strongWeathers.includes(currentWeather) || strongWeathers.includes(weatherType)) {
         battleState.field.weather = weatherType;
         battleState.field.weatherTurns = turns;
         newLog.push({ type: 'text', text: message });
+    } else {
+        newLog.push({ type: 'text', text: `The strong weather could not be changed!` });
     }
 };
 
@@ -60,6 +84,25 @@ export const abilityEffects = {
     },
     'drizzle': {
         onSwitchIn: (pokemon, battleState, newLog) => {
+            console.log(`--- DRIZZLE onSwitchIn ---`);
+            console.log(`Pokemon: ${pokemon.name}, Species: ${pokemon.speciesName}, Held Item: ${pokemon.heldItem?.id}`);
+
+            if (pokemon.speciesName === 'kyogre' && !pokemon.transformed && pokemon.heldItem?.id === 'blue-orb') {
+                console.log("SUCCESS: Conditions for Primal Kyogre met.");
+                const primalForm = pokemon.forms?.find(f => f.formName === 'kyogre-primal');
+                if (primalForm) {
+                    console.log("SUCCESS: Primal form found. Adding to formChangeQueue.");
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: primalForm, type: 'RESOLVE' });
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Blue Orb is glowing...` });
+                    newLog.push({ type: 'text', text: `${pokemon.name} underwent Primal Reversion!` });
+                    return;
+                } else {
+                    console.error("FAILURE: Primal form NOT found in pokemon.forms array.");
+                }
+            } else {
+                console.warn("INFO: Conditions for Primal Kyogre NOT met. Setting regular rain.");
+            }
+
             const turns = pokemon.heldItem?.id === 'damp-rock' ? 8 : 5;
             setWeather('rain', turns, 'It started to rain!', pokemon, battleState, newLog);
         }
@@ -75,6 +118,25 @@ export const abilityEffects = {
     },
     'drought': {
         onSwitchIn: (pokemon, battleState, newLog) => {
+            console.log(`--- DROUGHT onSwitchIn ---`);
+            console.log(`Pokemon: ${pokemon.name}, Species: ${pokemon.speciesName}, Held Item: ${pokemon.heldItem?.id}`);
+
+            if (pokemon.speciesName === 'groudon' && !pokemon.transformed && pokemon.heldItem?.id === 'red-orb') {
+                console.log("SUCCESS: Conditions for Primal Groudon met.");
+                const primalForm = pokemon.forms?.find(f => f.formName === 'groudon-primal');
+                if (primalForm) {
+                    console.log("SUCCESS: Primal form found. Adding to formChangeQueue.");
+                    battleState.formChangeQueue.push({ pokemon: pokemon, form: primalForm, type: 'RESOLVE' });
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Red Orb is glowing...` });
+                    newLog.push({ type: 'text', text: `${pokemon.name} underwent Primal Reversion!` });
+                    return;
+                } else {
+                    console.error("FAILURE: Primal form NOT found in pokemon.forms array.");
+                }
+            } else {
+                console.warn("INFO: Conditions for Primal Groudon NOT met. Setting regular sun.");
+            }
+
             const turns = pokemon.heldItem?.id === 'heat-rock' ? 8 : 5;
             setWeather('sunshine', turns, 'The sunlight turned harsh!', pokemon, battleState, newLog);
         }
@@ -279,6 +341,35 @@ export const abilityEffects = {
     },
     'magic-guard': {
         // Marker ability
+    },
+    'bad-dreams': {
+        onEndOfTurn: (pokemon, battleState, newLog) => {
+            // Find all sleeping opponents
+            const opponents = getActiveOpponents(pokemon, battleState);
+            opponents.forEach(opp => {
+                if (opp.status === 'Asleep') {
+                    const damage = Math.max(1, Math.floor(opp.maxHp / 8));
+                    opp.currentHp = Math.max(0, opp.currentHp - damage);
+                    newLog.push({ type: 'text', text: `${opp.name} is having a nightmare!` });
+                    if (opp.currentHp === 0) {
+                        opp.fainted = true;
+                        newLog.push({ type: 'text', text: `${opp.name} fainted!` });
+                    }
+                }
+            });
+        }
+    },
+    'healer': {
+        onEndOfTurn: (pokemon, battleState, newLog) => {
+            // Find adjacent allies with a status condition
+            const allies = getActiveAllies(pokemon, battleState);
+            allies.forEach(ally => {
+                if (ally.status !== 'None' && resolveChance(30, `healer_proc_${pokemon.id}_on_${ally.id}`, battleState)) {
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Healer cured ${ally.name}!` });
+                    ally.status = 'None';
+                }
+            });
+        }
     },
     'poison-heal': {
         onEndOfTurn: (pokemon, battleState, newLog) => {
@@ -689,14 +780,14 @@ export const abilityEffects = {
         }
     },
 
-    'gooey': {
-        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
-            if (attacker.stat_stages['speed'] > -6) {
-                newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${pokemon.name}'s Gooey!` });
-                statChanger(attacker, 'speed', -1, newLog, battleState);
-            }
+'gooey': {
+    onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
+        if (attacker.stat_stages['speed'] > -6) {
+            newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${pokemon.name}'s Gooey!` });
+            statChanger(attacker, 'speed', -1, newLog, battleState);
         }
-    },
+    }
+},
     'tangling-hair': {
         onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             if (attacker.stat_stages['speed'] > -6) {
@@ -740,13 +831,26 @@ export const abilityEffects = {
             }
         }
     },
+    'truant': {
+        onStartOfTurn: (pokemon, battleState, newLog) => {
+            // Toggle the isLoafing flag. The !pokemon.isLoafing checks the state from the *previous* turn.
+            if (!pokemon.isLoafing) {
+                // This turn, the Pokémon will loaf.
+                newLog.push({ type: 'text', text: `${pokemon.name} is loafing around!` });
+                pokemon.isLoafing = true;
+            } else {
+                // This turn, the Pokémon can move.
+                pokemon.isLoafing = false;
+            }
+        }
+    },
     'soundproof': {
         onCheckImmunity: (move, pokemon, attackerAbilityId, newLog) => {
             if (SOUND_MOVES.has(move.id)) {
                 newLog.push({ type: 'text', text: `${pokemon.name}'s Soundproof blocks the move!` });
-                return true;
+                return true; // Return true to indicate the Pokémon is immune
             }
-            return false;
+            return false; // Not immune
         }
     },
     'aerilate': {
@@ -893,7 +997,11 @@ export const abilityEffects = {
     'simple': {},
     'wonder-guard': {},
     'mold-breaker': {},
-    'pressure': {},
+    'pressure': {
+        onModifyPP: (ppCost, move, user) => {
+            return ppCost + 1;
+        }
+    },
     'stall': {},
     'unnerve': {},
     'sniper': {},

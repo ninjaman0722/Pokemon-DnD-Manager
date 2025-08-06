@@ -1,4 +1,4 @@
-import { abilityEffects } from '../../config/abilityEffects';
+import { abilityEffects } from './abilityEffects';
 
 export const getEffectiveAbility = (pokemon, currentBattleState) => {
     if (!pokemon || !pokemon.ability) {
@@ -69,19 +69,13 @@ export const getActiveOpponents = (pokemon, currentBattleState) => {
     return opponentTeam.pokemon.filter((p, i) => opponentActiveIndices.includes(i) && p && !p.fainted);
 };
 /**
- * Resolves any chance-based event according to the 100% vs. DM-controlled rule.
- * @param {number} chance - The percentage chance of the event occurring (e.g., 30 for 30%).
- * @param {string} dmFlagKey - The key to check for in the battleState.dm object (e.g., 'willApplyEffect').
+ * Checks ONLY for a DM override for a given chance-based event.
+ * @param {string} dmFlagKey - The key to check for in the battleState.dm object (e.g., 'willHit_move-id_on_target-id').
  * @param {object} battleState - The current battle state, which may contain the dm object.
- * @returns {boolean} - Whether the event should occur.
+ * @returns {boolean} - The DM's decision, or false if no decision was made.
  */
 export const resolveChance = (dmFlagKey, battleState) => {
-    // 1. PRIORITIZE the DM's decision. If a flag is set, always obey it.
-    if (battleState.dm?.[dmFlagKey] !== undefined) {
-        return battleState.dm[dmFlagKey];
-    }
-    // 3. If no DM decision and not guaranteed, it fails by default.
-    return false;
+    return !!battleState.dm?.[dmFlagKey];
 };
 export const calculateTurnOrderSpeed = (pokemon, battleState) => {
     if (!pokemon) return 0;

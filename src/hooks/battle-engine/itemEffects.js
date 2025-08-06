@@ -4,8 +4,9 @@
  * The value is an object containing specific "hook" functions that the engine will call
  * at different points in the battle.
  */
-import { TYPE_ENHANCING_ITEMS, PUNCHING_MOVES, SOUND_MOVES, SUPER_EFFECTIVE_BERRY_MAP, TYPE_CHART, TWO_TURN_MOVES } from './gameData';
-import { getEffectiveAbility } from '../hooks/battle-engine/battleUtils';
+import { TYPE_ENHANCING_ITEMS, PUNCHING_MOVES, SOUND_MOVES, SUPER_EFFECTIVE_BERRY_MAP, TYPE_CHART, TWO_TURN_MOVES } from '../../config/gameData';
+import { getEffectiveAbility } from './battleUtils';
+import { calculateStatChange } from './stateModifiers';
 
 // --- Item Definitions ---
 export const itemEffects = {
@@ -98,7 +99,7 @@ export const itemEffects = {
     'expert-belt': {
         onModifyDamage: (damageDetails) => { if (damageDetails.effectiveness > 1) damageDetails.finalMultiplier *= 1.2; }
     },
-// In src/config/itemEffects.js
+    // In src/config/itemEffects.js
     'life-orb': {
         onModifyDamage: (damageDetails, attacker, move) => {
             damageDetails.finalMultiplier *= 1.3;
@@ -118,23 +119,28 @@ export const itemEffects = {
 
     // --- Defensive / Recovery Items ---
     'focus-sash': {
+        // This hook is called with the calculated damage BEFORE it's subtracted from HP.
         onTakeDamage: (damage, target, move, battleState, newLog) => {
             const isAtFullHp = target.currentHp === target.maxHp;
             const isLethal = damage >= target.currentHp;
 
+            // The Focus Sash only works if the Pokémon is at full HP and the hit would be lethal.
             if (target.heldItem?.id === 'focus-sash' && isAtFullHp && isLethal) {
                 newLog.push({ type: 'text', text: `${target.name} hung on using its Focus Sash!` });
                 target.lastConsumedItem = target.heldItem;
                 target.heldItem = null;
+                // The function returns the new damage value: exactly enough to leave the Pokémon with 1 HP.
                 return target.currentHp - 1;
             }
+            // If the conditions aren't met, return the original damage.
             return damage;
         }
     },
     'sitrus-berry': {
         onTakeDamage: (damage, target, move, battleState, newLog) => {
+            // The check happens based on HP *after* the incoming damage.
             const hpAfterDamage = target.currentHp - damage;
-            if (target.currentHp > 0 && hpAfterDamage <= target.maxHp / 2) {
+            if (target.heldItem?.id === 'sitrus-berry' && hpAfterDamage > 0 && hpAfterDamage <= target.maxHp / 2) {
                 const healAmount = Math.floor(target.maxHp / 4);
                 target.currentHp = Math.min(target.maxHp, target.currentHp + healAmount);
                 newLog.push({ type: 'text', text: `${target.name} ate its Sitrus Berry and restored health!` });
@@ -241,32 +247,32 @@ export const itemEffects = {
             }
         }
     },
-'eject-button': {
-    onTakeDamage: (damage, target, move, battleState, newLog) => {
-        if (damage > 0 && target.currentHp - damage > 0 && target.heldItem?.id === 'eject-button') { // Added item check for safety
-            newLog.push({ type: 'text', text: `${target.name} is forced to switch out by its Eject Button!` });
-            
-            // --- THIS IS THE MISSING LINE ---
-            // The teamId and slotIndex need to be found to add to the queue.
-            const teamIndex = battleState.teams.findIndex(t => t.pokemon.some(p => p.id === target.id));
-            if (teamIndex !== -1) {
-                const team = battleState.teams[teamIndex];
-                const teamKey = team.id === 'players' ? 'players' : 'opponent';
-                const slotIndex = battleState.activePokemonIndices[teamKey].findIndex(i => team.pokemon[i]?.id === target.id);
-                
-                if (slotIndex !== -1) {
-                    battleState.ejectQueue.push({ teamId: team.id, teamIndex, slotIndex });
-                }
-            }
-            // --- END FIX ---
+    'eject-button': {
+        onTakeDamage: (damage, target, move, battleState, newLog) => {
+            if (damage > 0 && target.currentHp - damage > 0 && target.heldItem?.id === 'eject-button') { // Added item check for safety
+                newLog.push({ type: 'text', text: `${target.name} is forced to switch out by its Eject Button!` });
 
-            target.lastConsumedItem = target.heldItem; // Consume the item
-            target.heldItem = null;
+                // --- THIS IS THE MISSING LINE ---
+                // The teamId and slotIndex need to be found to add to the queue.
+                const teamIndex = battleState.teams.findIndex(t => t.pokemon.some(p => p.id === target.id));
+                if (teamIndex !== -1) {
+                    const team = battleState.teams[teamIndex];
+                    const teamKey = team.id === 'players' ? 'players' : 'opponent';
+                    const slotIndex = battleState.activePokemonIndices[teamKey].findIndex(i => team.pokemon[i]?.id === target.id);
+
+                    if (slotIndex !== -1) {
+                        battleState.ejectQueue.push({ teamId: team.id, teamIndex, slotIndex });
+                    }
+                }
+                // --- END FIX ---
+
+                target.lastConsumedItem = target.heldItem; // Consume the item
+                target.heldItem = null;
+            }
+            return damage;
         }
-        return damage;
-    }
-},
-    
+    },
+
     'air-balloon': {
         onCheckImmunity: (move, target) => move.type === 'ground',
         onTakeDamage: (damage, target, move, battleState, newLog) => {
@@ -280,20 +286,27 @@ export const itemEffects = {
     'protective-pads': {},
     'weakness-policy': {
         onTakeDamage: (damage, target, move, battleState, newLog) => {
-            if (damage > 0 && target.heldItem) {
+            if (target.heldItem?.id === 'weakness-policy' && damage > 0) {
+                // Check if the incoming move was super-effective.
                 let effectiveness = 1;
                 target.types.forEach(type => {
                     effectiveness *= TYPE_CHART[move.type]?.[type] ?? 1;
                 });
+
                 if (effectiveness > 1) {
                     newLog.push({ type: 'text', text: `${target.name}'s Weakness Policy was activated!` });
                     let boosted = false;
+                    const statChanger = (pokemon, stat, change) => {
+                        const { updatedTarget, newLog: statLog } = calculateStatChange(pokemon, stat, change, battleState);
+                        Object.assign(pokemon, updatedTarget); // Apply the changes to the Pokémon
+                        newLog.push(...statLog); // Add any new log messages
+                    };
                     if (target.stat_stages['attack'] < 6) {
-                        target.stat_stages['attack'] = Math.min(6, target.stat_stages['attack'] + 2);
+                        statChanger(target, 'attack', 2, newLog, battleState);
                         boosted = true;
                     }
                     if (target.stat_stages['special-attack'] < 6) {
-                        target.stat_stages['special-attack'] = Math.min(6, target.stat_stages['special-attack'] + 2);
+                        statChanger(target, 'special-attack', 2, newLog, battleState);
                         boosted = true;
                     }
                     if (boosted) {

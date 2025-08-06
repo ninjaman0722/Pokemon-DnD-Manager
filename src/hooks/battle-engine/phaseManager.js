@@ -40,21 +40,32 @@ export const findNextReplacement = (currentState) => {
     if (!currentState?.teams) {
         return null;
     }
+
     for (let teamIndex = 0; teamIndex < currentState.teams.length; teamIndex++) {
+        // This correctly defines 'team' for the scope of this loop iteration.
         const team = currentState.teams[teamIndex];
-        const teamKey = team.id === 'players' ? 'players' : 'opponent';
-        const activeIndices = currentState.activePokemonIndices[teamKey];
+        
+        // Use the team's actual ID as the key, which is now consistent.
+        const activeIndices = currentState.activePokemonIndices[team.id];
+
+        // Add a safety check in case indices are missing.
+        if (!activeIndices) continue;
 
         for (let slotIndex = 0; slotIndex < activeIndices.length; slotIndex++) {
             const pokemonIndex = activeIndices[slotIndex];
+            // Check if the Pokémon in this active slot has fainted.
             if (team.pokemon[pokemonIndex] && team.pokemon[pokemonIndex].fainted) {
+                // Check if there are any available Pokémon on the bench to switch to.
                 const hasReplacements = team.pokemon.some((p, i) => p && !p.fainted && !activeIndices.includes(i));
                 if (hasReplacements) {
+                    // If a replacement is needed and available, return the details.
                     return { teamIndex, slotIndex };
                 }
             }
         }
     }
+
+    // If no replacements are needed, return null.
     return null;
 };
 

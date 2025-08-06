@@ -1,3 +1,5 @@
+import React from "react";
+
 export const POKEAPI_BASE_URL = "https://pokeapi.co/api/v2/";
 export const MAX_PARTY_SIZE = 6;
 
@@ -48,9 +50,6 @@ export const TYPE_ICONS = {
     dark: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M12 2.25a.75.75 0 01.75.75v.518l.983.492a.75.75 0 010 1.34l-.983.491v1.838l.983.492a.75.75 0 010 1.34l-.983.491v1.838l.983.492a.75.75 0 010 1.34l-.983.491v1.838l.983.492a.75.75 0 010 1.34l-.983.491v.518a.75.75 0 01-1.5 0v-.518l-.983-.492a.75.75 0 010-1.34l.983-.491v-1.838l-.983-.492a.75.75 0 010-1.34l.983-.491v-1.838l-.983-.492a.75.75 0 010-1.34l.983-.491V3a.75.75 0 01.75-.75z" clipRule="evenodd" /></svg>,
     steel: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.944 1.54l-.022.076a1.99 1.99 0 00-1.884 1.884l-.076.022a1.99 1.99 0 00-1.54 1.944l.076.022c.112.033.22.07.324.11a1.99 1.99 0 001.54 1.944l.022.076c.033.111.07.219.11.324a1.99 1.99 0 001.944 1.54l.022-.076a1.99 1.99 0 001.884-1.884l.076-.022a1.99 1.99 0 001.54-1.944l-.076-.022a1.99 1.99 0 00-1.54-1.944l-.022-.076a1.99 1.99 0 00-1.944-1.54l-.022.076a1.99 1.99 0 00-1.884 1.884l-.076.022a1.99 1.99 0 00-1.54 1.944l.076.022c.11.033.22.07.324.11a1.99 1.99 0 001.54 1.944l.022.076c.033.11.07.219.11.324a1.99 1.99 0 001.944 1.54l.022-.076a1.99 1.99 0 001.884-1.884l.076-.022a1.99 1.99 0 001.54-1.944l-.076-.022a1.99 1.99 0 00-1.54-1.944l-.022-.076a1.99 1.99 0 00-1.944-1.54z" clipRule="evenodd" /></svg>,
     fairy: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354l-4.503 3.123c-.996.608-2.231-.289-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" /></svg>,
-    physical: null, // Keep these to prevent breaking the editor modal
-    special: null,
-    status: null,
 };
 
 export const TYPE_ENHANCING_ITEMS = {
@@ -64,7 +63,18 @@ export const TYPE_ENHANCING_ITEMS = {
     'meadow-plate': 'grass', 'splash-plate': 'water', 'zap-plate': 'electric', 'icicle-plate': 'ice',
     'fist-plate': 'fighting', 'mind-plate': 'psychic'
 };
+export const HEALING_MOVES = new Set([
+    'recover', 'roost', 'slack-off', 'soft-boiled', 'synthesis', 'moonlight', 'morning-sun',
+    'heal-pulse', 'milk-drink', 'heal-order', 'rest'
+]);
+export const AQUA_RING_MOVE = 'aqua-ring';
+export const INGRAIN_MOVE = 'ingrain';
+export const DISABLE_INDUCING_MOVES = new Set(['disable']);
+export const TORMENT_INDUCING_MOVES = new Set(['torment']);
+export const HEAL_BLOCK_INDUCING_MOVES = new Set(['heal-block']);
+export const REDIRECTING_MOVES = new Set(['follow-me', 'rage-powder', 'spotlight']);
 export const PUNCHING_MOVES = new Set(['comet-punch', 'dizzy-punch', 'double-iron-bash', 'drain-punch', 'dynamic-punch', 'fire-punch', 'focus-punch', 'hammer-arm', 'ice-hammer', 'ice-punch', 'jet-punch', 'mach-punch', 'mega-punch', 'plasma-fists', 'power-up-punch', 'shadow-punch', 'sky-uppercut', 'surging-strikes', 'thunder-punch', 'wicked-blow']);
+export const EXPLOSIVE_MOVES = new Set(['explosion', 'self-destruct', 'misty-explosion', 'mind-blown']);
 export const SOUND_MOVES = new Set(['boomburst', 'bug-buzz', 'chatter', 'clanging-scales', 'clangorous-soul', 'disarming-voice', 'echoed-voice', 'eerie-spell', 'grass-whistle', 'growl', 'howl', 'hyper-voice', 'metal-sound', 'noble-roar', 'overdrive', 'parting-shot', 'perish-song', 'relic-song', 'round', 'screech', 'shadow-panic', 'sing', 'snarl', 'snore', 'sparkling-aria', 'supersonic', 'torch-song', 'uproar']);
 export const AURA_PULSE_MOVES = new Set(['aura-sphere', 'dark-pulse', 'dragon-pulse', 'heal-pulse', 'origin-pulse', 'terrain-pulse', 'water-pulse']);
 export const BITING_MOVES = new Set(['bite', 'crunch', 'fire-fang', 'fishious-rend', 'hyper-fang', 'ice-fang', 'jaw-lock', 'poison-fang', 'psychic-fangs', 'strong-jaw', 'thunder-fang']);
@@ -381,38 +391,6 @@ export const TERRAIN_TYPES = ['none', 'electric-terrain', 'grassy-terrain', 'mis
 
 export const ENTRY_HAZARDS = ['Stealth Rock', 'Spikes', 'Toxic Spikes', 'Sticky Web'];
 
-export const FUSION_RECIPES = {
-    'kyurem': {
-        item: 'DNA Splicers',
-        partners: {
-            'zekrom': 'kyurem-black',
-            'reshiram': 'kyurem-white',
-        }
-    },
-    // Add recipes for Necrozma, Calyrex etc. here
-};
-
-export const KEY_ITEM_RECIPES = {
-    'Reveal Glass': {
-        'tornadus-incarnate': 'tornadus-therian',
-        'thundurus-incarnate': 'thundurus-therian',
-        'landorus-incarnate': 'landorus-therian',
-        'enamorus-incarnate': 'enamorus-therian',
-        // Add reverse transformations
-        'tornadus-therian': 'tornadus-incarnate',
-        'thundurus-therian': 'thundurus-incarnate',
-        'landorus-therian': 'landorus-incarnate',
-        'enamorus-therian': 'enamorus-incarnate',
-    },
-    'Gracidea': {
-        'shaymin-land': 'shaymin-sky',
-        'shaymin-sky': 'shaymin-land',
-    },
-    'Prison Bottle': {
-        'hoopa': 'hoopa-unbound',
-        'hoopa-unbound': 'hoopa',
-    },
-};
 export const STAGE_MULTIPLIERS = {
     '6': { num: 9, den: 3 }, '5': { num: 8, den: 3 }, '4': { num: 7, den: 3 },
     '3': { num: 6, den: 3 }, '2': { num: 5, den: 3 }, '1': { num: 4, den: 3 },
@@ -434,3 +412,5 @@ export const UNMISSABLE_MOVES = new Set([
     'swift',
     'vital-throw'
 ]);
+
+export const DELAYED_DAMAGE_MOVES = new Set(['future-sight', 'doom-desire']);

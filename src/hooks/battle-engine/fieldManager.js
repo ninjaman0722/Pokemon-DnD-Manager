@@ -1,10 +1,19 @@
 import { TYPE_CHART } from '../../config/gameData';
-import { abilityEffects } from '../../config/abilityEffects';
-import { itemEffects } from '../../config/itemEffects';
+import { abilityEffects } from './abilityEffects';
+import { itemEffects } from './itemEffects';
 import { getEffectiveAbility, isGrounded, getActiveOpponents } from './battleUtils';
 import { calculateStatChange, handleTransform } from './stateModifiers';
 
 export const runOnSwitchIn = (pokemonArray, currentBattleState, newLog) => {
+
+    console.log("--- runOnSwitchIn TRIGGERED ---");
+    if (pokemonArray && pokemonArray.length > 0) {
+        console.log("Processing the following Pokémon:", pokemonArray.map(p => `${p.name} (Ability: ${p.ability?.id})`).join(', '));
+    } else {
+        console.error("FAILURE: runOnSwitchIn was called with an empty or invalid pokemonArray.");
+        return; // Stop execution if there are no Pokémon
+    }
+
     pokemonArray.forEach(pokemon => {
         if (!pokemon || pokemon.fainted) return;
 
