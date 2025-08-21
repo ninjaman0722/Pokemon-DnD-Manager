@@ -6,20 +6,29 @@ import { calculateStatChange } from './stateModifiers';
 
 const { itemEffects } = itemEffectsManager;
 
-export const getZMovePower = (basePower) => {
-    if (basePower <= 55) return 100;
-    if (basePower <= 65) return 120;
-    if (basePower <= 75) return 140;
-    if (basePower <= 85) return 160;
-    if (basePower <= 95) return 175;
-    if (basePower <= 100) return 180;
-    if (basePower <= 110) return 185;
-    if (basePower <= 125) return 190;
-    if (basePower <= 130) return 195;
-    return 200;
-};
-
 export const calculateDamage = (attacker, defender, move, isCritical, currentBattleState, newLog) => {
+
+    if (move.type === 'internal') {
+        // This is a special, simplified calculation ONLY for confusion damage.
+        const level = attacker.level;
+        const attack = attacker.stats.attack * getStatModifier(attacker.stat_stages.attack);
+        const defense = attacker.stats.defense * getStatModifier(attacker.stat_stages.defense);
+        const power = move.power; // This will be 40
+
+        // Using a simplified version of the main damage formula
+        const damage = Math.floor(Math.floor(Math.floor(2 * level / 5 + 2) * power * attack / defense) / 50) + 2;
+        
+        // This calculation intentionally bypasses all standard modifiers:
+        // - STAB
+        // - Items (e.g., Life Orb)
+        // - Abilities (e.g., Technician)
+        // - Critical Hits
+        // - Type Effectiveness & Immunities (Wonder Guard)
+        // - Burn status reduction
+
+        return { damage: Math.max(1, damage), effectiveness: 1, isCritical: false, move: move }; // Return early
+    }
+
     const weather = currentBattleState.field.weather;
     if (move.damage_class.name !== 'status') {
         if (weather === 'harsh-sunshine' && move.type === 'water') {
@@ -207,6 +216,9 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
     }
     let baseDamage = Math.floor(((((2 * attacker.level / 5 + 2) * details.power * (details.attack / details.defense)) / 50) + 2));
     let finalDamage = Math.floor(baseDamage * details.finalMultiplier);
+    const isBurned = attacker.status === 'Burned' && !isSpecial && attackerAbilityId !== 'guts';
+    console.log(`[Damage Calc] Attacker: ${attacker.name}, Move: ${move.name}, Move Damage Class: ${move.damage_class.name}, Status: ${attacker.status}, Is Burned & Physical?: ${isBurned}, Final Damage: ${finalDamage}`);
+
     if (attacker.status === 'Burned' && !isSpecial && attackerAbilityId !== 'guts') {
         finalDamage = Math.floor(finalDamage / 2);
     }

@@ -90,7 +90,7 @@ export async function fetchMoveData(moveName) {
             name: toTitleCase(data.name),
             id: data.name, // The functional, hyphenated ID
             type: data.type.name,
-            damage_class: data.damage_class.name,
+            damage_class: data.damage_class,
             power: data.power || 0,
             accuracy: data.accuracy || 100,
             pp: data.pp,

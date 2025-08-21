@@ -6,82 +6,74 @@ import { handleFightAction } from '../actions/handleFightAction';
 
 const preMoveChecks = (actor, battleState, newLog) => {
     if (actor.isLoafing) {
-        // The log message is already added in startOfTurn, so we just block the move.
-        return false; // Cannot move
+        return false;
     }
     if (actor.volatileStatuses.includes('Flinched')) {
-        actor.volatileStatuses = actor.volatileStatuses.filter(s => s !== 'Flinched'); // Flinch is consumed after one turn.
+        actor.volatileStatuses = actor.volatileStatuses.filter(s => s !== 'Flinched');
         newLog.push({ type: 'text', text: `${actor.name} flinched and couldn't move!` });
-        return false; // Cannot move
+        return false;
     }
 
-    // 2. Check for Infatuation
     if (actor.volatileStatuses.some(s => (s.name || s) === 'Infatuated')) {
-        const sourceOfLove = battleState.teams.flatMap(t => t.pokemon).find(p => p.id === actor.infatuatedWith);
-        if (!sourceOfLove || sourceOfLove.fainted) {
-            actor.volatileStatuses = actor.volatileStatuses.filter(s => (s.name || s) !== 'Infatuated');
-            actor.infatuatedWith = null;
-            newLog.push({ type: 'text', text: `${actor.name} snapped out of its infatuation!` });
-        } else {
-            const dmFlagKey = `isImmobilizedByLove_${actor.id}`;
-            if (resolveChance(50, dmFlagKey, battleState)) {
-                newLog.push({ type: 'text', text: `${actor.name} is immobilized by love!` });
-                return false; // Cannot move
-            }
+        const dmFlagKey = `isImmobilizedByLove_${actor.id}`;
+        // --- MODIFIED: No random fallback ---
+        if (battleState.dm?.[dmFlagKey]) {
+            newLog.push({ type: 'text', text: `${actor.name} is immobilized by love!` });
+            return false;
         }
     }
 
-    // 3. Check for Confusion
     if (actor.volatileStatuses.some(s => (s.name || s) === 'Confused')) {
         newLog.push({ type: 'text', text: `${actor.name} is confused!` });
-        const dmSnapOutKey = `willSnapOutOfConfusion_${actor.id}`;
-        if (resolveChance(33.3, dmSnapOutKey, battleState)) {
+        const hurtSelfKey = `willHurtSelfInConfusion_${actor.id}`;
+        const snapOutKey = `willSnapOutOfConfusion_${actor.id}`;
+
+        // This logic is already correct from our last change
+        if (battleState.dm?.[hurtSelfKey]) {
+            newLog.push({ type: 'text', text: `It hurt itself in its confusion!` });
+            const confusionMove = { power: 40, damage_class: { name: 'physical' }, type: 'internal' };
+            const { damage } = calculateDamage(actor, actor, confusionMove, false, battleState, newLog);
+            actor.currentHp = Math.max(0, actor.currentHp - damage);
+            if (actor.currentHp === 0) {
+                actor.fainted = true;
+                newLog.push({ type: 'text', text: `${actor.name} fainted!` });
+            }
+            return false;
+        } else if (battleState.dm?.[snapOutKey]) {
             actor.volatileStatuses = actor.volatileStatuses.filter(s => (s.name || s) !== 'Confused');
             newLog.push({ type: 'text', text: `${actor.name} snapped out of its confusion!` });
-        } else {
-            const dmHurtSelfKey = `willHurtSelfInConfusion_${actor.id}`;
-            if (resolveChance(33.3, dmHurtSelfKey, battleState)) {
-                newLog.push({ type: 'text', text: `It hurt itself in its confusion!` });
-                const confusionMove = { power: 40, damage_class: { name: 'physical' }, type: 'internal' };
-                const { damage } = calculateDamage(actor, actor, confusionMove, false, battleState, newLog);
-                actor.currentHp = Math.max(0, actor.currentHp - damage);
-                if (actor.currentHp === 0) {
-                    actor.fainted = true;
-                    newLog.push({ type: 'text', text: `${actor.name} fainted!` });
-                }
-                return false; // Cannot move
-            }
         }
     }
 
-    // 4. Check for Sleep, Freeze, and Paralysis
     if (actor.status === 'Asleep') {
         const dmFlagKey = `willWakeUp_${actor.id}`;
-        if (resolveChance(33.3, dmFlagKey, battleState)) {
+        // --- MODIFIED: No random fallback ---
+        if (battleState.dm?.[dmFlagKey]) {
             actor.status = 'None';
             newLog.push({ type: 'text', text: `${actor.name} woke up!` });
         } else {
             newLog.push({ type: 'text', text: `${actor.name} is fast asleep.` });
-            return false; // Cannot move
+            return false;
         }
     } else if (actor.status === 'Frozen') {
         const dmFlagKey = `willThaw_${actor.id}`;
-        if (resolveChance(20, dmFlagKey, battleState)) {
+        // --- MODIFIED: No random fallback ---
+        if (battleState.dm?.[dmFlagKey]) {
             actor.status = 'None';
             newLog.push({ type: 'text', text: `${actor.name} thawed out!` });
         } else {
             newLog.push({ type: 'text', text: `${actor.name} is frozen solid!` });
-            return false; // Cannot move
+            return false;
         }
     } else if (actor.status === 'Paralyzed') {
         const dmFlagKey = `isFullyParalyzed_${actor.id}`;
-        if (resolveChance(25, dmFlagKey, battleState)) {
+        // --- MODIFIED: No random fallback ---
+        if (battleState.dm?.[dmFlagKey]) {
             newLog.push({ type: 'text', text: `${actor.name} is fully paralyzed!` });
-            return false; // Cannot move
+            return false;
         }
     }
 
-    // If none of the above conditions prevented movement, the Pokémon can act.
     return true;
 };
 

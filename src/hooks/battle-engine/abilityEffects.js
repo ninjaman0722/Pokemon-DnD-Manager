@@ -15,34 +15,7 @@ import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTAB
 import { calculateStatChange } from './stateModifiers';
 import { calculateStat } from '../../utils/api';
 import { getStatModifier, getEffectiveAbility } from './battleUtils';
-import { resolveChance } from './battleUtils';
-// --- Helper Functions ---
-const getActiveOpponents = (pokemon, battleState, newLog) => {
-    const pokemonTeamId = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
-    if (!pokemonTeamId) return [];
-
-    const opponentTeam = battleState.teams.find(t => t.id !== pokemonTeamId);
-    const opponentKey = opponentTeam.id === 'players' ? 'players' : 'opponent';
-
-    return opponentTeam.pokemon.filter((p, i) => battleState.activePokemonIndices[opponentKey].includes(i) && p && !p.fainted);
-};
-
-const getActiveAllies = (pokemon, battleState) => {
-    // 1. Find the team the Pokémon belongs to.
-    const pokemonTeam = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id));
-    if (!pokemonTeam) return [];
-
-    // 2. Get the indices of all Pokémon active on that team.
-    const activeIndicesOnTeam = battleState.activePokemonIndices[pokemonTeam.id] || [];
-
-    // 3. Return all active Pokémon on that team, excluding the Healer Pokémon itself.
-    return pokemonTeam.pokemon.filter((p, i) =>
-        activeIndicesOnTeam.includes(i) && // Is the Pokémon active?
-        p &&                              // Does it exist?
-        !p.fainted &&                     // Is it not fainted?
-        p.id !== pokemon.id               // Is it not the user of the ability?
-    );
-};
+import { resolveChance, getActiveAllies, getActiveOpponents } from './battleUtils';
 
 const setWeather = (weatherType, turns, message, pokemon, battleState, newLog) => {
     const strongWeathers = ['heavy-rain', 'harsh-sunshine', 'strong-winds'];
@@ -361,10 +334,10 @@ export const abilityEffects = {
     },
     'healer': {
         onEndOfTurn: (pokemon, battleState, newLog) => {
-            // Find adjacent allies with a status condition
             const allies = getActiveAllies(pokemon, battleState);
             allies.forEach(ally => {
-                if (ally.status !== 'None' && resolveChance(30, `healer_proc_${pokemon.id}_on_${ally.id}`, battleState)) {
+                const dmFlagKey = `healer_proc_${pokemon.id}_on_${ally.id}`;
+                if (ally.status !== 'None' && battleState.dm?.[dmFlagKey]) {
                     newLog.push({ type: 'text', text: `${pokemon.name}'s Healer cured ${ally.name}!` });
                     ally.status = 'None';
                 }
@@ -384,14 +357,10 @@ export const abilityEffects = {
     },
 
     'static': {
-        // 1. Update the function to accept 'battleState'
         onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             if (attacker.status === 'None' && !attacker.types.includes('electric')) {
-                // 2. Define a unique key for the DM to control this specific event
                 const dmFlagKey = `willTriggerStatic_${pokemon.id}_on_${attacker.id}`;
-
-                // 3. Use resolveChance to determine the outcome
-                if (resolveChance(30, dmFlagKey, battleState)) {
+                if (battleState.dm?.[dmFlagKey]) {
                     attacker.status = 'Paralyzed';
                     newLog.push({ type: 'text', text: `${pokemon.name}'s Static paralyzed ${attacker.name}!` });
                 }
@@ -402,8 +371,8 @@ export const abilityEffects = {
         onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             if (attacker.status === 'None') {
                 const dmFlagKey = `willTriggerPoisonPoint_${pokemon.id}_on_${attacker.id}`;
-                // The chance is 30%
-                if (resolveChance(30, dmFlagKey, battleState)) {
+
+                if (battleState.dm?.[dmFlagKey]) {
                     attacker.status = 'Poisoned';
                     newLog.push({ type: 'text', text: `${pokemon.name}'s Poison Point poisoned ${attacker.name}!` });
                 }
@@ -891,19 +860,11 @@ export const abilityEffects = {
     },
     'harvest': {
         onEndOfTurn: (pokemon, battleState, newLog) => {
-            // The condition to check if Harvest can even trigger remains the same.
             if (pokemon.lastConsumedItem && !pokemon.heldItem && pokemon.lastConsumedItem.name.includes('berry')) {
                 const weather = battleState.field.weather;
                 const isSun = (weather === 'sunshine' || weather === 'harsh-sunshine');
-
-                // 1. Determine the chance based on game state.
-                const chance = isSun ? 100 : 50;
-
-                // 2. Create a unique, dynamic key for this specific event.
                 const dmFlagKey = `willTriggerHarvest_${pokemon.id}`;
-
-                // 3. Use the single, centralized resolveChance function.
-                if (resolveChance(chance, dmFlagKey, battleState)) {
+                if (isSun || battleState.dm?.[dmFlagKey]) {
                     const restoredItem = { ...pokemon.lastConsumedItem };
                     pokemon.heldItem = restoredItem;
                     pokemon.lastConsumedItem = null;
@@ -990,6 +951,42 @@ export const abilityEffects = {
                 return value * 2;
             }
             return value;
+        }
+    },
+    'flame-body': {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
+            if (attacker.status === 'None') {
+                const dmFlagKey = `willTriggerFlame-body_${pokemon.id}_on_${attacker.id}`;
+                if (battleState.dm?.[dmFlagKey]) {
+                    attacker.status = 'Burned';
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Flame Body burned ${attacker.name}!` });
+                }
+            }
+        }
+    },
+    'cute-charm': {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
+            if (attacker.gender !== 'Genderless' && pokemon.gender !== 'Genderless' && attacker.gender !== pokemon.gender && !attacker.volatileStatuses.some(s => s === 'Infatuated')) {
+                const dmFlagKey = `willTriggerCute-charm_${pokemon.id}_on_${attacker.id}`;
+                if (battleState.dm?.[dmFlagKey]) {
+                    attacker.volatileStatuses.push('Infatuated');
+                    attacker.infatuatedWith = pokemon.id;
+                    newLog.push({ type: 'text', text: `${attacker.name} was infatuated by ${pokemon.name}'s Cute Charm!` });
+                }
+            }
+        }
+    },
+    'effect-spore': {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
+            if (attacker.status === 'None') {
+                const dmFlagKey = `willTriggerEffect-spore_${pokemon.id}_on_${attacker.id}`;
+                if (battleState.dm?.[dmFlagKey]) {
+                    const statuses = ['Poisoned', 'Paralyzed', 'Asleep'];
+                    const chosenStatus = statuses[Math.floor(Math.random() * statuses.length)];
+                    attacker.status = chosenStatus;
+                    newLog.push({ type: 'text', text: `${pokemon.name}'s Effect Spore afflicted ${attacker.name} with ${chosenStatus.toLowerCase()}!` });
+                }
+            }
         }
     },
     // Marker abilities that don't have hooks but need to exist in the object

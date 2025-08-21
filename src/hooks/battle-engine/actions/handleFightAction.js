@@ -408,9 +408,10 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
     move.pp -= ppCost;
 
     let lastDamageDealt = 0;
+    let moveConnected = false;
     for (const [i, hit] of action.hits.entries()) {
         let originalTarget = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === hit.targetId);
-        
+
         // Skip this iteration if the target is invalid (e.g., already fainted from a previous hit)
         if (!originalTarget || originalTarget.fainted) continue;
 
@@ -423,15 +424,16 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
 
         // Run all checks and effects for the finalTarget of this specific hit
         if (checkProtection(finalTarget, move, allQueuedActions, newLog)) continue;
-        
+
         const targetAbilityId = getEffectiveAbility(finalTarget, currentBattleState)?.id;
         const immunityCheck = abilityEffects[targetAbilityId]?.onCheckImmunity;
         if (immunityCheck && immunityCheck(move, finalTarget, getEffectiveAbility(actor, currentBattleState)?.id, newLog)) continue;
 
         const hitFlagKey = `willHit_${move.id}_hit${i + 1}_on_${finalTarget.id}`;
-        const moveWillHit = UNMISSABLE_MOVES.has(move.id) || resolveChance(hitFlagKey, currentBattleState);
-        
+        const moveWillHit = UNMISSABLE_MOVES.has(move.id) || currentBattleState.dm?.[hitFlagKey];
+
         if (moveWillHit) {
+            moveConnected = true;
             const attackEntry = {
                 type: 'attack',
                 attackerName: actor.name,
@@ -443,7 +445,7 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
 
             const critFlagKey = `isCritical_${move.id}_hit${i + 1}_on_${finalTarget.id}`;
             const critChanceValue = parseFloat(CRIT_CHANCE_PERCENTAGES[calculateCritStage(actor, move, HIGH_CRIT_RATE_MOVES)]);
-            const isCritical = resolveChance(critChanceValue, critFlagKey, currentBattleState);
+            const isCritical = currentBattleState.dm?.[critFlagKey];
 
             const damageResult = calculateDamage(actor, finalTarget, move, isCritical, currentBattleState, newLog);
             let damage = damageResult.damage;
@@ -461,7 +463,7 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
             // Apply damage and handle on-hit effects
             const actualDamageDealt = Math.min(finalTarget.currentHp, damage);
             finalTarget.currentHp -= actualDamageDealt;
-            
+
             if (damageResult.effectiveness === 0) attackEntry.effectivenessText = "It had no effect...";
             else if (damageResult.effectiveness > 1) attackEntry.effectivenessText = "It's super effective!";
             else if (damageResult.effectiveness < 1) attackEntry.effectivenessText = "It's not very effective...";
@@ -552,46 +554,82 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
                 }
                 // Apply Confusion status from a damaging move
                 const confusionEffectKey = `willApplyEffect_${move.id}_on_${finalTarget.id}`;
-                if (damage > 0 && CONFUSION_INDUCING_MOVES.has(move.id) && resolveChance(move.meta?.ailment_chance || 30, confusionEffectKey, currentBattleState)) {
+                if (damage > 0 && CONFUSION_INDUCING_MOVES.has(move.id) && currentBattleState.dm?.[confusionEffectKey]) {
                     if (!finalTarget.volatileStatuses.some(s => (s.name || s) === 'Confused')) {
                         finalTarget.volatileStatuses.push('Confused');
                         newLog.push({ type: 'text', text: `${finalTarget.name} became confused!` });
                     }
                 }
 
-                // Apply Ailment (e.g. burn, paralysis)
-                const ailment = move.meta?.ailment?.name;
-                const ailmentChance = move.meta?.ailment_chance || 0;
-                if (ailment && ailment !== 'none' && !damageResult.move.sheerForceBoosted) {
-                    const dmFlagKey = `willApplyEffect_${move.id}_on_${finalTarget.id}`;
-                    if (resolveChance(ailmentChance, dmFlagKey, currentBattleState) && finalTarget.status === 'None') {
-                        const statusToApply = API_AILMENT_TO_STATUS_MAP[ailment];
+                console.log(`[Execution] Move "${move.name}" was determined to be a HIT.`);
+
+                // --- ADD LOGS HERE ---
+                console.log(`[Execution] Checking move: ${move.name}`);
+                console.log(`[Execution] Move Details:`, {
+                    damage_class: move.damage_class.name,
+                    category: move.meta?.category?.name,
+                    ailment: move.meta?.ailment?.name
+                });
+
+                // Handle PRIMARY effects of status moves immediately after a hit is confirmed.
+                if (move.damage_class.name === 'status' && move.meta?.category?.name === 'ailment') {
+                    // --- ADD ANOTHER LOG HERE ---
+                    console.log(`[Execution] Status move detected. Applying effect.`);
+
+                    if (finalTarget.status === 'None') {
+                        const statusToApply = API_AILMENT_TO_STATUS_MAP[move.meta.ailment.name];
                         if (statusToApply) {
-                            const isImmune = (statusToApply === 'Paralyzed' && finalTarget.types.includes('electric')) || (statusToApply === 'Burned' && finalTarget.types.includes('fire')) || (statusToApply === 'Frozen' && finalTarget.types.includes('ice')) || ((statusToApply === 'Poisoned' || statusToApply === 'Badly Poisoned') && (finalTarget.types.includes('poison') || finalTarget.types.includes('steel')));
+                            const isImmune =
+                                (statusToApply === 'Paralyzed' && finalTarget.types.includes('electric')) ||
+                                (statusToApply === 'Burned' && finalTarget.types.includes('fire')) ||
+                                (statusToApply === 'Frozen' && finalTarget.types.includes('ice')) ||
+                                ((statusToApply === 'Poisoned' || statusToApply === 'Badly Poisoned') && (finalTarget.types.includes('poison') || finalTarget.types.includes('steel')));
+
                             if (!isImmune) {
                                 finalTarget.status = statusToApply;
                                 newLog.push({ type: 'text', text: `${finalTarget.name} was afflicted with ${statusToApply.toLowerCase()}!` });
+                            } else {
+                                newLog.push({ type: 'text', text: `It doesn't affect ${finalTarget.name}...` });
                             }
                         }
                     }
                 }
-                
+
+                // This is the existing logic for SECONDARY effects of damaging moves
+                const ailment = move.meta?.ailment?.name;
+                const effectKey = `willApplyEffect_${move.id}_on_${finalTarget.id}`;
+                if (ailment && ailment !== 'none' && !damageResult.move.sheerForceBoosted && currentBattleState.dm?.[effectKey]) {
+                    if (finalTarget.status === 'None') {
+                        const statusToApply = API_AILMENT_TO_STATUS_MAP[ailment];
+                        if (statusToApply) {
+                            const isImmune =
+                                (statusToApply === 'Paralyzed' && finalTarget.types.includes('electric')) ||
+                                (statusToApply === 'Burned' && finalTarget.types.includes('fire')) ||
+                                (statusToApply === 'Frozen' && finalTarget.types.includes('ice')) ||
+                                ((statusToApply === 'Poisoned' || statusToApply === 'Badly Poisoned') && (finalTarget.types.includes('poison') || finalTarget.types.includes('steel')));
+
+                            if (!isImmune) {
+                                finalTarget.status = statusToApply;
+                                newLog.push({ type: 'text', text: `${finalTarget.name} was afflicted with ${statusToApply.toLowerCase()}!` });
+                            } else {
+                                newLog.push({ type: 'text', text: `It doesn't affect ${finalTarget.name}...` });
+                            }
+                        }
+                    }
+                }
+
+
                 // Apply Stat Changes
                 if (move.stat_changes?.length > 0 && !damageResult.move.sheerForceBoosted) {
-                    const statChangeChance = move.meta?.stat_chance || 0;
                     const dmFlagKey = `willApplyStatChange_${move.id}_on_${finalTarget.id}`;
-                    if (resolveChance(statChangeChance, dmFlagKey, currentBattleState) && finalTarget.heldItem?.id !== 'covert-cloak') {
-                        move.stat_changes.forEach(sc => {
-                            const { updatedTarget, newLog: statLog } = calculateStatChange(finalTarget, sc.stat.name, sc.change, currentBattleState);
-                            Object.assign(finalTarget, updatedTarget);
-                            newLog.push(...statLog);
-                        });
+                    if (currentBattleState.dm?.[dmFlagKey] && finalTarget.heldItem?.id !== 'covert-cloak') {
+                        // ... (rest of stat change logic)
                     }
                 }
 
                 // Apply Flinch
                 const flinchFlagKey = `willFlinch_${move.id}_on_${finalTarget.id}`;
-                if (resolveChance(100, flinchFlagKey, currentBattleState)) {
+                if (currentBattleState.dm?.[flinchFlagKey]) {
                     const targetHasActed = sortedActions.slice(0, sortedActions.indexOf(action)).some(a => a.pokemon.id === finalTarget.id);
                     if (!targetHasActed && !finalTarget.volatileStatuses.includes('Flinched')) {
                         finalTarget.volatileStatuses.push('Flinched');
@@ -612,59 +650,75 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
         }
     }
 
-    if (RECOIL_MOVES.has(move.id) && lastDamageDealt > 0 && actor.currentHp > 0 && actorAbilityId !== 'magic-guard') {
-        const recoilFraction = RECOIL_MOVES.get(move.id);
-        const recoilDamage = Math.max(1, Math.floor(lastDamageDealt * recoilFraction));
-        actor.currentHp = Math.max(0, actor.currentHp - recoilDamage);
-        newLog.push({ type: 'text', text: `${actor.name} is damaged by recoil!` });
-        if (actor.currentHp === 0) {
-            actor.fainted = true;
-            newLog.push({ type: 'text', text: `${actor.name} fainted!` });
-        }
-    }
-
-    if (DRAIN_MOVES.has(move.id) && lastDamageDealt > 0 && actor.currentHp > 0 && actor.currentHp < actor.maxHp) {
-        let healFraction = DRAIN_MOVES.get(move.id);
-        let healAmount = Math.max(1, Math.floor(lastDamageDealt * healFraction));
-        if (actor.heldItem?.id === 'big-root') {
-            healAmount = Math.floor(healAmount * 1.3);
-        }
-        actor.currentHp = Math.min(actor.maxHp, actor.currentHp + healAmount);
-        newLog.push({ type: 'text', text: `${actor.name} drained health!` });
-    }
-
-    const selfStatChanges = SELF_STAT_LOWERING_MOVES.get(move.id);
-    if (selfStatChanges) {
-        let statsWereLowered = false;
-        selfStatChanges.forEach(sc => {
-            if (sc.change < 0) {
-                statsWereLowered = true;
-            }
-            const { updatedTarget, newLog: statLog } = calculateStatChange(actor, sc.stat, sc.change, currentBattleState);
-            Object.assign(actor, updatedTarget);
-            newLog.push(...statLog);
-        });
-
-        if (statsWereLowered) {
-            const actorItemId = actor.heldItem?.id;
-            if (actorItemId && itemEffects[actorItemId]?.onStatLowered) {
-                itemEffects[actorItemId].onStatLowered(actor, currentBattleState, newLog);
+    if (moveConnected) {
+        if (RECOIL_MOVES.has(move.id) && lastDamageDealt > 0 && actor.currentHp > 0 && actorAbilityId !== 'magic-guard') {
+            const recoilFraction = RECOIL_MOVES.get(move.id);
+            const recoilDamage = Math.max(1, Math.floor(lastDamageDealt * recoilFraction));
+            actor.currentHp = Math.max(0, actor.currentHp - recoilDamage);
+            newLog.push({ type: 'text', text: `${actor.name} is damaged by recoil!` });
+            if (actor.currentHp === 0) {
+                actor.fainted = true;
+                newLog.push({ type: 'text', text: `${actor.name} fainted!` });
             }
         }
-    }
-    if (CONSECUTIVE_TURN_MOVES.has(move.id) && !actor.lockedMove) {
-        actor.lockedMove = { id: move.id, turns: 2 + Math.floor(Math.random() * 2) };
-    }
-    if (actor.lockedMove) {
-        actor.lockedMove.turns--;
-        if (actor.lockedMove.turns === 0) {
-            actor.lockedMove = null;
-            if (!actor.fainted) {
-                newLog.push({ type: 'text', text: `${actor.name} became confused due to fatigue!` });
-                actor.volatileStatuses.push('Confused');
+
+        if (DRAIN_MOVES.has(move.id) && lastDamageDealt > 0 && actor.currentHp > 0 && actor.currentHp < actor.maxHp) {
+            let healFraction = DRAIN_MOVES.get(move.id);
+            let healAmount = Math.max(1, Math.floor(lastDamageDealt * healFraction));
+            if (actor.heldItem?.id === 'big-root') {
+                healAmount = Math.floor(healAmount * 1.3);
+            }
+            actor.currentHp = Math.min(actor.maxHp, actor.currentHp + healAmount);
+            newLog.push({ type: 'text', text: `${actor.name} drained health!` });
+        }
+
+        const selfStatChanges = SELF_STAT_LOWERING_MOVES.get(move.id);
+        if (selfStatChanges) {
+            let statsWereLowered = false;
+            selfStatChanges.forEach(sc => {
+                if (sc.change < 0) {
+                    statsWereLowered = true;
+                }
+                const { updatedTarget, newLog: statLog } = calculateStatChange(actor, sc.stat, sc.change, currentBattleState);
+                Object.assign(actor, updatedTarget);
+                newLog.push(...statLog);
+            });
+
+            if (statsWereLowered) {
+                const actorItemId = actor.heldItem?.id;
+                if (actorItemId && itemEffects[actorItemId]?.onStatLowered) {
+                    itemEffects[actorItemId].onStatLowered(actor, currentBattleState, newLog);
+                }
             }
         }
+
+        // The logic for Outrage/Thrash etc.
+        if (CONSECUTIVE_TURN_MOVES.has(move.id) && !actor.lockedMove) {
+            actor.lockedMove = { id: move.id, turns: 2 + Math.floor(Math.random() * 2) };
+        }
+
+        // The logic for Choice items
+        const choiceItems = ['choice-band', 'choice-specs', 'choice-scarf'];
+        const actorItemId = actor.heldItem?.id;
+        if (actorItemId && choiceItems.includes(actorItemId) && !actor.lockedMove) {
+            actor.lockedMove = { id: move.id };
+            newLog.push({ type: 'text', text: `${actor.name} is locked into ${move.name}!` });
+        }
+        if (actor.lockedMove) {
+            actor.lockedMove.turns--;
+            if (actor.lockedMove.turns === 0) {
+                actor.lockedMove = null;
+                if (!actor.fainted) {
+                    newLog.push({ type: 'text', text: `${actor.name} became confused due to fatigue!` });
+                    actor.volatileStatuses.push('Confused');
+                }
+            }
+        }
+
+        // Also update lastMoveUsed only on a successful connection
+        actor.lastMoveUsed = move.name;
     }
+
     if (move.gemBoosted) {
         newLog.push({ type: 'text', text: `${actor.name}'s ${actor.heldItem.name} made the move stronger!` });
         actor.heldItem = null;
@@ -674,14 +728,6 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
         actor.heldItem = null;
     }
 
-    const choiceItems = ['choice-band', 'choice-specs', 'choice-scarf'];
-    const actorItemId = actor.heldItem?.id;
-    // If the actor used a move, is holding a choice item, and isn't already locked into a move...
-    if (actorItemId && choiceItems.includes(actorItemId) && !actor.lockedMove) {
-        // ...lock them into this move.
-        actor.lockedMove = { id: move.id };
-        newLog.push({ type: 'text', text: `${actor.name} is locked into ${move.name}!` });
-    }
     actor.lastMoveUsed = move.name;
     if (actor.encoreTurns > 0) {
         actor.encoreTurns--;

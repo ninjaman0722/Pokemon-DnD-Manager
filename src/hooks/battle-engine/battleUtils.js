@@ -1,5 +1,22 @@
 import { abilityEffects } from './abilityEffects';
 
+export const getActiveAllies = (pokemon, battleState) => {
+    // 1. Find the team the Pokémon belongs to.
+    const pokemonTeam = battleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id));
+    if (!pokemonTeam) return [];
+
+    // 2. Get the indices of all Pokémon active on that team.
+    const activeIndicesOnTeam = battleState.activePokemonIndices[pokemonTeam.id] || [];
+
+    // 3. Return all active Pokémon on that team, excluding the Healer Pokémon itself.
+    return pokemonTeam.pokemon.filter((p, i) =>
+        activeIndicesOnTeam.includes(i) && // Is the Pokémon active?
+        p &&                              // Does it exist?
+        !p.fainted &&                     // Is it not fainted?
+        p.id !== pokemon.id               // Is it not the user of the ability?
+    );
+};
+
 export const getEffectiveAbility = (pokemon, currentBattleState) => {
     if (!pokemon || !pokemon.ability) {
         return null;

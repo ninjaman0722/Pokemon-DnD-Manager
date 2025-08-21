@@ -287,92 +287,95 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
             switchInEffectsResolved: false // This initializes the crucial flag
         };
     };
-    const startBattle = async () => {
-        dispatch({ type: 'SET_LOADING', payload: 'Creating battle...' });
-        const resetPokemon = (p) => ({ ...p, currentHp: p.maxHp, fainted: false });
-        const freshPlayerTeam = playerTeam.map(addCalculatedStats);
-        let freshOpponentTeam = opponentTeam.map(addCalculatedStats);
-        if (battleType === 'BOSS' && opponentTrainer.finalPokemon) {
-            const freshFinalPokemon = resetPokemon(scalePokemonToLevel(opponentTrainer.finalPokemon, selectedCampaign.partyLevel));
-            freshOpponentTeam = [...freshOpponentTeam, freshFinalPokemon];
-        }
-        if (freshPlayerTeam.length === 0 || freshOpponentTeam.length === 0) {
-            dispatch({ type: 'SET_ERROR', payload: `Both teams must have Pokémon.` }); return;
-        }
-        const battleId = `battle-${crypto.randomUUID()}`;
-        const playerTeamId = 'players';
-        const opponentTeamId = opponentTrainer?.id || 'wild';
+const startBattle = async () => {
+    if (!state.user?.uid) {
+        dispatch({ type: 'SET_ERROR', payload: 'User not authenticated. Please log in again.' });
+        return;
+    }
+    dispatch({ type: 'SET_LOADING', payload: 'Creating battle...' });
+    const resetPokemon = (p) => ({ ...p, currentHp: p.maxHp, fainted: false });
+    const freshPlayerTeam = playerTeam.map(addCalculatedStats);
+    let freshOpponentTeam = opponentTeam.map(addCalculatedStats);
+    if (battleType === 'BOSS' && opponentTrainer?.finalPokemon) {
+        const freshFinalPokemon = resetPokemon(scalePokemonToLevel(opponentTrainer.finalPokemon, selectedCampaign.partyLevel));
+        freshOpponentTeam = [...freshOpponentTeam, freshFinalPokemon];
+    }
+    if (freshPlayerTeam.length === 0 || freshOpponentTeam.length === 0) {
+        dispatch({ type: 'SET_ERROR', payload: 'Both teams must have Pokémon.' });
+        return;
+    }
+    const battleId = `battle-${crypto.randomUUID()}`;
+    const playerTeamId = 'players';
+    const opponentTeamId = opponentTrainer?.id || 'wild';
 
-        // 2. Determine the number of active Pokémon for the opponent.
-        const opponentActiveCount = battleType === 'WILD'
-            ? freshOpponentTeam.length
-            : Math.min(freshOpponentTeam.length, numTrainers);
-        const battleState = {
-            id: battleId,
-            teams: [
-                { id: playerTeamId, name: selectedPlayerTrainers.map(t => t.name).join(' & '), pokemon: freshPlayerTeam, trainerIds: playerTrainerIds },
-                { id: opponentTeamId, name: opponentTrainer?.name || 'Wild Pokémon', pokemon: freshOpponentTeam }
-            ],
-            log: [{ type: 'text', text: `A battle is starting!` }],
-            turn: 1,
-            phase: 'START_OF_BATTLE',
-            gameOver: false,
-            field: { weather: 'none', weatherTurns: 0, terrain: 'none', terrainTurns: 0, trickRoomTurns: 0, magicRoomTurns: 0, gravityTurns: 0, wonderRoomTurns: 0, hazards: { [playerTeamId]: {}, [opponentTeamId]: {} } }, // Use dynamic keys for hazards too
-            startOfBattleAbilitiesResolved: false,
-            activePokemonIndices: {
-                // Use the variables to ensure the keys match the team IDs exactly.
-                [playerTeamId]: Array.from({ length: Math.min(freshPlayerTeam.length, numTrainers) }, (_, i) => i),
-                [opponentTeamId]: Array.from({ length: opponentActiveCount }, (_, i) => i)
-            },
-            ownerId: state.user?.uid || null
-        };
-        try {
-            const batch = writeBatch(db);
-
-            // 1. Set the main battle document
-            const sanitizedBattleState = removeUndefinedValues(battleState);
-            const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
-            batch.set(battleDocRef, sanitizedBattleState);
-
-            // 2. Identify all unique trainers involved
-            const allInvolvedTrainers = [...selectedPlayerTrainers];
-            if (opponentTrainer) {
-                allInvolvedTrainers.push(opponentTrainer);
-            }
-            const uniqueTrainers = [...new Map(allInvolvedTrainers.map(t => [t.id, t])).values()];
-
-            // 3. For each trainer, copy their data to the public artifacts collection
-            uniqueTrainers.forEach(trainer => {
-                const publicTrainerRef = doc(db, `artifacts/${appId}/public/data/trainers`, trainer.id);
-                // We only need a subset of data for the simulator
-                const publicTrainerData = {
-                    id: trainer.id,
-                    name: trainer.name,
-                    // The simulator doesn't need the full roster, bag, etc., just the name.
-                    // You can add more fields here if the simulator needs them later.
-                };
-                batch.set(publicTrainerRef, publicTrainerData);
-            });
-
-            // 4. Commit all writes at once
-            await batch.commit();
-
-            const simulatorUrl = new URL(window.location.href);
-            simulatorUrl.pathname = '/simulator';
-            simulatorUrl.search = `?battleId=${battleId}`;
-            setGeneratedBattle({ id: battleId, url: simulatorUrl.href });
-        } catch (e) {
-            // --- THIS IS THE MODIFIED PART ---
-            console.error("Firestore write failed. Starting data validation...");
-            findInvalidFirestoreData(battleState); // Run the validator on the object
-            console.error("Validation complete. See any messages above for the specific path to the invalid data.", e);
-            // --- END MODIFICATION ---
-
-            dispatch({ type: 'SET_ERROR', payload: `Failed to create battle: ${e.message}` });
-        } finally {
-            dispatch({ type: 'SET_LOADING', payload: null });
-        }
+    const battleState = {
+        id: battleId,
+        teams: [
+            { id: playerTeamId, name: selectedPlayerTrainers.map(t => t.name).join(' & '), pokemon: freshPlayerTeam, trainerIds: playerTrainerIds },
+            { id: opponentTeamId, name: opponentTrainer?.name || 'Wild Pokémon', pokemon: freshOpponentTeam }
+        ],
+        log: [{ type: 'text', text: 'A battle is starting!' }],
+        turn: 1,
+        phase: 'START_OF_BATTLE',
+        gameOver: false,
+        field: { 
+            weather: 'none', 
+            weatherTurns: 0, 
+            terrain: 'none', 
+            terrainTurns: 0, 
+            trickRoomTurns: 0, 
+            magicRoomTurns: 0, 
+            gravityTurns: 0, 
+            wonderRoomTurns: 0, 
+            hazards: { [playerTeamId]: {}, [opponentTeamId]: {} } 
+        },
+        startOfBattleAbilitiesResolved: false,
+        activePokemonIndices: {
+            [playerTeamId]: Array.from({ length: Math.min(freshPlayerTeam.length, numTrainers) }, (_, i) => i),
+            [opponentTeamId]: Array.from({ length: battleType === 'WILD' ? freshOpponentTeam.length : Math.min(freshOpponentTeam.length, numTrainers) }, (_, i) => i)
+        },
+        ownerId: state.user.uid
     };
+    try {
+        const batch = writeBatch(db);
+
+        // 1. Set the main battle document
+        const sanitizedBattleState = removeUndefinedValues(battleState);
+        console.log('Writing battle document:', sanitizedBattleState);
+        const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
+        batch.set(battleDocRef, sanitizedBattleState);
+
+        // 2. Copy trainer data
+        const allInvolvedTrainers = [...selectedPlayerTrainers];
+        if (opponentTrainer) {
+            allInvolvedTrainers.push(opponentTrainer);
+        }
+        const uniqueTrainers = [...new Map(allInvolvedTrainers.map(t => [t.id, t])).values()];
+        uniqueTrainers.forEach(trainer => {
+            const publicTrainerRef = doc(db, `artifacts/${appId}/public/data/trainers`, trainer.id);
+            const publicTrainerData = {
+                id: trainer.id,
+                name: trainer.name
+            };
+            batch.set(publicTrainerRef, publicTrainerData);
+        });
+
+        // 3. Commit all writes
+        await batch.commit();
+
+        const simulatorUrl = new URL(window.location.href);
+        simulatorUrl.pathname = '/simulator';
+        simulatorUrl.search = `?battleId=${battleId}`;
+        setGeneratedBattle({ id: battleId, url: simulatorUrl.href });
+    } catch (e) {
+        console.error('Firestore write failed. Starting data validation...');
+        findInvalidFirestoreData(battleState);
+        console.error('Validation complete. See any messages above for the specific path to the invalid data.', e);
+        dispatch({ type: 'SET_ERROR', payload: `Failed to create battle: ${e.message}` });
+    } finally {
+        dispatch({ type: 'SET_LOADING', payload: null });
+    }
+};
 
     const handleSavePokemonEdit = (editedPokemon) => {
         setOpponentTeam(currentTeam => currentTeam.map(p => p.id === editedPokemon.id ? editedPokemon : p));

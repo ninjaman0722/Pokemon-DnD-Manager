@@ -10,7 +10,6 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
         console.error("executeTurn was called with an undefined battleState.");
         return { finalBattleState: battleState, finalLog: [] };
     }
-    // --- END MASTER DEBUG BLOCK ---
     let currentBattleState = JSON.parse(JSON.stringify(battleState));
     let allActions = { ...queuedActions };
     let newLog = [...currentBattleState.log, { type: 'text', text: `--- Turn ${currentBattleState.turn} ---` }];
@@ -21,10 +20,13 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
     const allActivePokemon = currentBattleState.teams.flatMap(team =>
         team.pokemon.filter((p, i) => currentBattleState.activePokemonIndices[team.id]?.includes(i) && p && !p.fainted)
     );
+
+    // Only add actions for Pokémon without queued actions
     allActivePokemon.forEach(pokemon => {
-        if (pokemon.chargingMove && !allActions[pokemon.id]) {
-            // Find the original target(s)
-            const targetIds = [pokemon.chargingMove.originalTargetId]; // Simplified for singles, can be expanded
+        if (allActions[pokemon.id]) return; // Respect player-selected actions
+
+        if (pokemon.chargingMove) {
+            const targetIds = [pokemon.chargingMove.originalTargetId];
             allActions[pokemon.id] = {
                 type: 'FIGHT',
                 pokemon: pokemon,
@@ -33,29 +35,36 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
                 hits: targetIds.map(id => ({ targetId: id })),
                 willHit: true,
             };
-        }
-        if (pokemon.lockedMove && !allActions[pokemon.id]) {
+        } else if (pokemon.lockedMove) {
             const move = pokemon.moves.find(m => m.id === pokemon.lockedMove.id);
-            if (move) {
-                // Find a valid, random target
-                const opponentTeam = currentBattleState.teams.find(t => t.id !== pokemon.teamId);
-                const validTargets = opponentTeam.pokemon.filter((p, i) => currentBattleState.activePokemonIndices[opponentTeam.id]?.includes(i) && p && !p.fainted);
-                const targetId = validTargets[0]?.id; // Simple targeting for now
-
-                if (targetId) {
-                    allActions[pokemon.id] = { type: 'FIGHT', pokemon, move, targetIds: [targetId], hits: [{ targetId }], willHit: true };
+            if (move && move.pp > 0) {
+                // Use last target if available, otherwise default to first opponent
+                const lastAction = allActions[pokemon.id]; // Should be null, but check for safety
+                let targetId = lastAction?.targetIds?.[0];
+                if (!targetId) {
+                    const opponentTeam = currentBattleState.teams.find(t => t.id !== pokemon.teamId);
+                    const validTargets = opponentTeam.pokemon.filter((p, i) => currentBattleState.activePokemonIndices[opponentTeam.id]?.includes(i) && p && !p.fainted);
+                    targetId = validTargets[0]?.id;
                 }
-            };
-        }
-        if (pokemon.volatileStatuses?.includes('Encore') && pokemon.encoredMove && !allActions[pokemon.id]) {
+                if (targetId) {
+                    allActions[pokemon.id] = {
+                        type: 'FIGHT',
+                        pokemon,
+                        move,
+                        targetIds: [targetId],
+                        hits: [{ targetId }],
+                        willHit: true,
+                        applyEffect: (move.effects?.[0]?.chance === 100) || (move.meta?.ailment_chance === 100)
+                    };
+                }
+            }
+        } else if (pokemon.volatileStatuses?.includes('Encore') && pokemon.encoredMove) {
             const move = pokemon.moves.find(m => m.name === pokemon.encoredMove);
             if (move) {
-                // Find a valid target (the first opponent for simplicity)
                 const opponentTeam = currentBattleState.teams.find(t => t.id !== pokemon.teamId);
                 if (opponentTeam) {
                     const activeOpponentIndices = currentBattleState.activePokemonIndices[opponentTeam.id] || [];
                     const validTarget = opponentTeam.pokemon.find((p, i) => activeOpponentIndices.includes(i) && p && !p.fainted);
-
                     if (validTarget) {
                         allActions[pokemon.id] = {
                             type: 'FIGHT',
@@ -70,6 +79,8 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
             }
         }
     });
+
+    // Handle lockedMove logic during action processing
     const sortedActions = Object.values(allActions).sort((a, b) => {
         let priorityA = (a.type === 'SWITCH' || a.type === 'ITEM') ? 10 : (a.move?.priority || 0);
         let priorityB = (b.type === 'SWITCH' || b.type === 'ITEM') ? 10 : (b.move?.priority || 0);
@@ -122,14 +133,30 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
         }
         return speedB - speedA;
     });
-    runStartOfTurnPhase(currentBattleState, sortedActions, newLog);
 
-    // 2. MAIN ACTION PHASE
+    // Process lockedMove logic during main action phase
+    sortedActions.forEach(action => {
+        if (action.type === 'FIGHT' && action.pokemon.lockedMove) {
+            const pokemon = currentBattleState.teams
+                .flatMap(t => t.pokemon)
+                .find(p => p.id === action.pokemon.id);
+            if (pokemon && pokemon.lockedMove) {
+                pokemon.lockedMove.turns--;
+                if (pokemon.lockedMove.turns === 0) {
+                    newLog.push({ type: 'text', text: `${pokemon.name} became confused due to fatigue!` });
+                    pokemon.lockedMove = null;
+                    if (!pokemon.fainted) {
+                        pokemon.volatileStatuses = [...(pokemon.volatileStatuses || []), 'Confused'];
+                    }
+                }
+            }
+        }
+    });
+
+    runStartOfTurnPhase(currentBattleState, sortedActions, newLog);
     runMainActionPhase(currentBattleState, sortedActions, redirectionMap, allTrainers, newLog, allActions);
     runEndOfTurnPhase(currentBattleState, newLog);
 
-    // 3. MID-TURN FORM CHANGE PROCESSING
-    // This handles any form changes queued during the main phase (e.g., from Zen Mode).
     if (currentBattleState.formChangeQueue.length > 0) {
         currentBattleState.formChangeQueue.forEach(change => {
             const pokemonInState = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === change.pokemon.id);
@@ -140,7 +167,6 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
         currentBattleState.formChangeQueue = [];
     }
 
-    // 4. END OF TURN PHASE
     runEndOfTurnPhase(currentBattleState, newLog);
 
     return { finalBattleState: currentBattleState, finalLog: newLog };

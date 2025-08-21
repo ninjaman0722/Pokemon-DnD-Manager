@@ -241,6 +241,38 @@ const volatileStatusEffects_eot = [
             }
         }
     },
+        {
+        name: 'Locked Move Countdown',
+        applies: (p) => p.lockedMove,
+        execute: (p, state, log) => {
+            // Decrement the turn counter
+            p.lockedMove.turnsLeft--;
+
+            // When the counter hits zero, the move ends
+            if (p.lockedMove.turnsLeft === 0) {
+                const moveName = p.lockedMove.id;
+                log.push({ type: 'text', text: `${p.name} is no longer locked into ${moveName}!` });
+
+                const inducesConfusion = p.lockedMove.inducesConfusion;
+
+                // IMPORTANT: Remove the lockedMove state from the pokemon
+                p.lockedMove = null;
+
+                // If the move causes confusion (like Outrage or Petal Dance)
+                if (inducesConfusion) {
+                    // Check if the pokemon is not already confused and doesn't have an ability preventing it
+                    const effectiveAbility = getEffectiveAbility(p, state)?.id;
+                    if (!p.volatileStatuses.some(s => s.name === 'Confused') && effectiveAbility !== 'own-tempo') {
+                        p.volatileStatuses.push({
+                            name: 'Confused',
+                            turnsLeft: Math.floor(Math.random() * 3) + 2, // 2-4 turns of confusion
+                        });
+                        log.push({ type: 'text', text: `${p.name} became confused due to fatigue!` });
+                    }
+                }
+            }
+        }
+    },
 ];
 
 export const runEndOfTurnPhase = (currentBattleState, newLog) => {

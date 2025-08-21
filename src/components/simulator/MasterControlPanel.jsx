@@ -1,11 +1,11 @@
+// src/components/battle/MasterControlPanel.jsx
 import React from 'react';
 import { WEATHER_TYPES, TERRAIN_TYPES, ENTRY_HAZARDS } from '../../config/gameData';
 
 const MasterControlPanel = ({
     allActivePokemon,
     activePanelPokemonId,
-    queuedActions,
-    isAiEnabled,
+    queuedActions, 
     isCompactView,
     allActionsQueued,
     phase,
@@ -14,11 +14,10 @@ const MasterControlPanel = ({
     isProcessingTurn,
     onToggleCompactView,
     onPokemonSelect,
-    onAiToggle,
     onExecuteTurn,
     onTurnChange,
     onFieldChange,
-    onHazardChange, // New prop
+    onHazardChange,
     targetingInfo
 }) => {
     const handleFieldUpdate = (key, value) => {
@@ -36,14 +35,12 @@ const MasterControlPanel = ({
         const key = hazard.toLowerCase().replace(' ', '-');
         const currentLayers = field.hazards?.[side]?.[key] || 0;
         let newLayers = Math.max(0, currentLayers + change);
-        
         if (key === 'stealth-rock' || key === 'sticky-web') {
             newLayers = Math.min(1, newLayers);
         }
         if (key === 'spikes' || key === 'toxic-spikes') {
             newLayers = Math.min(3, newLayers);
         }
-        
         onHazardChange(side, key, newLayers);
     };
 
@@ -59,13 +56,12 @@ const MasterControlPanel = ({
             <div className="flex-grow overflow-y-auto space-y-2 pr-1">
                 {allActivePokemon.map(p => (
                     <button key={p.id} onClick={() => onPokemonSelect(p.id)} disabled={targetingInfo.isActive} className={`w-full text-left px-3 py-2 font-semibold rounded transition-colors ${activePanelPokemonId === p.id ? 'bg-indigo-600' : 'bg-gray-700 hover:bg-gray-600'} disabled:cursor-not-allowed`}>
-                        {p.name} {(queuedActions[p.id] || p.chargingMove || p.rampageMove) ? '✓' : ''}
+                        {p.name} {queuedActions[p.id] || p.chargingMove || p.rampageMove || p.lockedMove ? '✓' : ''}
                     </button>
                 ))}
             </div>
 
             <div className="flex-shrink-0 space-y-2 text-sm">
-                {/* --- HAZARD CONTROLS --- */}
                 <div className="p-2 border border-gray-700 rounded-lg space-y-2">
                     <h4 className="text-xs font-bold text-center text-gray-400">ENTRY HAZARDS</h4>
                     {['players', 'opponent'].map(side => (
@@ -74,7 +70,7 @@ const MasterControlPanel = ({
                             <div className="grid grid-cols-4 gap-1">
                                 {ENTRY_HAZARDS.map(hazard => (
                                     <div key={hazard} className="flex flex-col items-center">
-                                        <span className="text-xs">{field.hazards?.[side]?.[hazard.toLowerCase().replace(' ','-')] || 0}</span>
+                                        <span className="text-xs">{field.hazards?.[side]?.[hazard.toLowerCase().replace(' ', '-')] || 0}</span>
                                         <div className="flex">
                                             <button onClick={() => hazardButton(side, hazard, -1)} className="bg-red-800 h-4 w-4 text-xs flex items-center justify-center rounded-l">-</button>
                                             <button onClick={() => hazardButton(side, hazard, 1)} className="bg-green-800 h-4 w-4 text-xs flex items-center justify-center rounded-r">+</button>
@@ -108,12 +104,16 @@ const MasterControlPanel = ({
                         <input type="number" value={field.terrainTurns} onChange={(e) => handleFieldUpdate('terrainTurns', Number(e.target.value))} className="w-full bg-gray-700 p-1 rounded-md text-center" min="0" />
                     </div>
                 </div>
-                
+
                 <div className="flex items-center justify-between text-sm">
                     <label htmlFor="turn-input" className="font-semibold">Current Turn:</label>
                     <input id="turn-input" type="number" value={turn} onChange={(e) => onTurnChange(Number(e.target.value))} className="w-20 bg-gray-700 p-1 rounded-md text-center border border-gray-600" min="1"/>
                 </div>
-                <button onClick={onExecuteTurn} disabled={!allActionsQueued || phase !== 'ACTION_SELECTION' || isProcessingTurn} className="w-full bg-green-600 hover:bg-green-700 font-bold py-2 px-6 rounded-lg text-lg disabled:bg-gray-600 disabled:cursor-not-allowed">
+                <button
+                    onClick={onExecuteTurn}
+                    disabled={!allActionsQueued || phase !== 'ACTION_SELECTION' || isProcessingTurn}
+                    className="w-full bg-green-600 hover:bg-green-700 font-bold py-2 px-6 rounded-lg text-lg disabled:bg-gray-600 disabled:cursor-not-allowed"
+                >
                     {isProcessingTurn ? 'Processing...' : 'Execute Turn'}
                 </button>
             </div>

@@ -94,7 +94,7 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
         updateQueuedAction({ // <-- CORRECTED
             ...targetingInfo.baseAction,
             targetIds: targetingInfo.selected,
-            hits: targetingInfo.selected.map(id => ({ targetId: id })) 
+            hits: targetingInfo.selected.map(id => ({ targetId: id }))
         });
         setTargetingInfo({ isActive: false, potential: [], selected: [], baseAction: null });
     };
@@ -276,6 +276,8 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
                 turnData={resolutionData}
                 onConfirm={handleConfirmResolution}
                 onCancel={() => setIsResolutionModalOpen(false)}
+                battleState={battleState}
+                queuedActions={queuedActions}
             />
             {editingPokemonStats && <PokemonStatEditorModal pokemon={editingPokemonStats} onSave={handleDirectPokemonUpdate} onClose={() => setEditingPokemonStats(null)} />}
             <TurnOrderDisplay turnOrder={turnOrder} turn={battleState.turn} />

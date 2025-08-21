@@ -150,6 +150,20 @@ export const itemEffects = {
             return damage;
         }
     },
+    'oran-berry': {
+        onTakeDamage: (damage, target, move, battleState, newLog) => {
+            // The check happens based on HP *after* the incoming damage.
+            const hpAfterDamage = target.currentHp - damage;
+            if (target.heldItem?.id === 'oran-berry' && hpAfterDamage > 0 && hpAfterDamage <= target.maxHp / 2) {
+                const healAmount = 10;
+                target.currentHp = Math.min(target.maxHp, target.currentHp + healAmount);
+                newLog.push({ type: 'text', text: `${target.name} ate its Oran Berry and restored health!` });
+                target.lastConsumedItem = target.heldItem;
+                target.heldItem = null;
+            }
+            return damage;
+        }
+    },
     'leftovers': {
         onEndOfTurn: (target, battleState, newLog) => {
             if (target.currentHp < target.maxHp) {
@@ -249,11 +263,9 @@ export const itemEffects = {
     },
     'eject-button': {
         onTakeDamage: (damage, target, move, battleState, newLog) => {
-            if (damage > 0 && target.currentHp - damage > 0 && target.heldItem?.id === 'eject-button') { // Added item check for safety
+            if (damage > 0 && target.currentHp - damage > 0 && target.heldItem?.id === 'eject-button') {
                 newLog.push({ type: 'text', text: `${target.name} is forced to switch out by its Eject Button!` });
 
-                // --- THIS IS THE MISSING LINE ---
-                // The teamId and slotIndex need to be found to add to the queue.
                 const teamIndex = battleState.teams.findIndex(t => t.pokemon.some(p => p.id === target.id));
                 if (teamIndex !== -1) {
                     const team = battleState.teams[teamIndex];
@@ -264,9 +276,7 @@ export const itemEffects = {
                         battleState.ejectQueue.push({ teamId: team.id, teamIndex, slotIndex });
                     }
                 }
-                // --- END FIX ---
-
-                target.lastConsumedItem = target.heldItem; // Consume the item
+                target.lastConsumedItem = target.heldItem;
                 target.heldItem = null;
             }
             return damage;
@@ -684,4 +694,5 @@ export const itemEffects = {
     'full-incense': {},
     'ring-target': {},
     'utility-umbrella': {},
+    'quick-claw': {},
 };
