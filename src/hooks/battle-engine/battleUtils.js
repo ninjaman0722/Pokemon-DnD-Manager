@@ -1,4 +1,5 @@
 import { abilityEffects } from './abilityEffects';
+import { ARMOR_TAIL_IGNORED_TARGETS } from '../../config/gameData';
 
 export const getActiveAllies = (pokemon, battleState) => {
     // 1. Find the team the Pokémon belongs to.
@@ -56,7 +57,9 @@ export const isGrounded = (pokemon, currentBattleState) => {
     if (pokemon.heldItem?.id === 'iron-ball') {
         return true;
     }
-
+    if (pokemon.volatileStatuses.some(s => (s.name || s) === 'Magnet Rise')) {
+        return false;
+    }
     // The rest of the logic only runs if Gravity is NOT active.
     if (currentBattleState.field.magicRoomTurns === 0 && pokemon.heldItem?.id === 'air-balloon') {
         return false;
@@ -133,4 +136,112 @@ export const calculateTurnOrderSpeed = (pokemon, battleState) => {
     }
 
     return speed;
+};
+
+/**
+ * Checks if weather effects are currently active, accounting for Air Lock/Cloud Nine.
+ * @param {object} battleState - The entire current battle state.
+ * @returns {boolean} - True if weather effects should be applied, false otherwise.
+ */
+export const isWeatherActive = (battleState) => {
+    if (battleState.field.weather === 'none') {
+        return false;
+    }
+
+    const isAbilitySuppressingWeather = battleState.teams.some(team =>
+        team.pokemon.some(p => {
+            if (p && !p.fainted) {
+                const abilityId = getEffectiveAbility(p, battleState)?.id;
+                return abilityId === 'air-lock' || abilityId === 'cloud-nine';
+            }
+            return false;
+        })
+    );
+
+    return !isAbilitySuppressingWeather;
+};
+
+/**
+ * Checks if a Pokémon is legally able to switch out.
+ * @param {object} pokemon - The Pokémon attempting to switch.
+ * @param {object} battleState - The entire current battle state.
+ * @returns {boolean} - True if the Pokémon can switch, false otherwise.
+ */
+export const canSwitchOut = (pokemon, battleState) => {
+    // Ghost-types are always immune to trapping.
+    if (pokemon.types.includes('ghost')) {
+        return true;
+    }
+    // Shed Shell allows switching regardless of trapping abilities.
+    if (pokemon.heldItem?.id === 'shed-shell') {
+        return true;
+    }
+
+    const opponents = getActiveOpponents(pokemon, battleState);
+    
+    for (const opponent of opponents) {
+        if (opponent.fainted) continue;
+
+        const opponentAbilityId = getEffectiveAbility(opponent, battleState)?.id;
+
+        // Check for Arena Trap
+        if (opponentAbilityId === 'arena-trap') {
+            // The trap does not work on the turn the trapper switches in.
+            if (opponent.justSwitchedIn) continue;
+
+            // The trap only affects grounded Pokémon.
+            if (isGrounded(pokemon, battleState)) {
+                return false; // This Pokémon is trapped.
+            }
+        }
+    }
+
+    // If no trapper was found, the Pokémon can switch.
+    return true;
+};
+
+export const getPriorityMoveProtector = (target, battleState) => {
+    const targetTeam = battleState.teams.find(t => t.pokemon.some(p => p.id === target.id));
+    if (!targetTeam) return null;
+
+    const activePokemonOnSide = targetTeam.pokemon.filter((p, i) => 
+        battleState.activePokemonIndices[targetTeam.id]?.includes(i) && p && !p.fainted
+    );
+
+    const protectiveAbilities = ['armor-tail', 'queenly-majesty'];
+    
+    // Find the first Pokémon on that side of the field with a protective ability.
+    return activePokemonOnSide.find(p => {
+        const abilityId = getEffectiveAbility(p, battleState)?.id;
+        return protectiveAbilities.includes(abilityId);
+    }) || null;
+};
+
+export const checkMoveBlockingAbilities = (action, actor, currentBattleState) => {
+    const move = action.move;
+
+    let isPriorityMove = move.priority > 0;
+    const actorAbilityId = getEffectiveAbility(actor, currentBattleState)?.id;
+    if (actorAbilityId === 'prankster' && move.damage_class.name === 'status') {
+        isPriorityMove = true;
+    }
+
+    if (isPriorityMove) {
+        const isIgnoredTarget = ARMOR_TAIL_IGNORED_TARGETS.has(move.target.name);
+        const canBypass = ['mold-breaker', 'teravolt', 'turboblaze'].includes(actorAbilityId);
+
+        if (!isIgnoredTarget && !canBypass) {
+            for (const hit of action.hits) {
+                const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === hit.targetId);
+                if (target && !target.fainted) {
+                    const protector = getPriorityMoveProtector(target, currentBattleState);
+                    if (protector) {
+                        return protector; // Return the Pokémon that is providing protection.
+                    }
+                }
+            }
+        }
+    }
+
+    return null; // The move is not blocked.
 };

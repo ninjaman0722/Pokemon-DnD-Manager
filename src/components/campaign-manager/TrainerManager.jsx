@@ -155,7 +155,11 @@ const TrainerManager = () => {
             } else {
                 // Pass the finalLevel to the fetch function
                 const basePokemonData = await fetchPokemonData(pokemonName, finalLevel, '', customMoves);
+                basePokemonData.id = `${pokemonName.toLowerCase()}-${crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}`;
                 initialPokemonData = { ...defaultPokemonState, ...basePokemonData, forms: officialFormsData[basePokemonData.speciesName] || [] };
+            }
+            if (initialPokemonData.types && initialPokemonData.types.length > 0 && typeof initialPokemonData.types[0] === 'object') {
+                initialPokemonData.types = initialPokemonData.types.map(t => t.name);
             }
             const finalPokemonData = calculateAndSetFinalStats(initialPokemonData);
 

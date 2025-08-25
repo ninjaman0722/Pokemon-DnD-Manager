@@ -16,6 +16,7 @@ export const executeTurn = async (battleState, queuedActions, allTrainers) => {
     const redirectionMap = new Map();
     currentBattleState.formChangeQueue = [];
     currentBattleState.forcedSwitchQueue = [];
+    currentBattleState.voluntarySwitchQueue = [];
 
     const allActivePokemon = currentBattleState.teams.flatMap(team =>
         team.pokemon.filter((p, i) => currentBattleState.activePokemonIndices[team.id]?.includes(i) && p && !p.fainted)

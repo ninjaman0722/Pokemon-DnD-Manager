@@ -1,4 +1,4 @@
-import { getEffectiveAbility, getStatModifier, isGrounded, calculateTurnOrderSpeed } from '../battleUtils';
+import { getEffectiveAbility, getStatModifier, isGrounded, calculateTurnOrderSpeed, isWeatherActive } from '../battleUtils';
 import { calculateStatChange } from '../stateModifiers';
 import { abilityEffects } from '../abilityEffects';
 import { itemEffects } from '../itemEffects';
@@ -6,7 +6,7 @@ import { itemEffects } from '../itemEffects';
 const weatherEffects = [
     {
         name: 'Sandstorm Damage',
-        applies: (p, state) => state.field.weather === 'sandstorm',
+        applies: (p, state) => isWeatherActive(state) && state.field.weather === 'sandstorm',
         isImmune: (p, state) => p.types.includes('rock') || p.types.includes('ground') || p.types.includes('steel') || ['sand-veil', 'sand-rush', 'sand-force', 'magic-guard'].includes(getEffectiveAbility(p, state)?.id),
         execute: (p, state, log) => {
             const damage = Math.max(1, Math.floor(p.maxHp / 16));
@@ -86,6 +86,18 @@ const statusEffects_eot = [
     }
 ];
 const volatileStatusEffects_eot = [
+    {
+        name: 'Magnet Rise Countdown',
+        applies: (p) => p.volatileStatuses.some(s => s.name === 'Magnet Rise'),
+        execute: (p, state, log) => {
+            const magnetRiseStatus = p.volatileStatuses.find(s => s.name === 'Magnet Rise');
+            magnetRiseStatus.turnsLeft--;
+            if (magnetRiseStatus.turnsLeft === 0) {
+                p.volatileStatuses = p.volatileStatuses.filter(s => s.name !== 'Magnet Rise');
+                log.push({ type: 'text', text: `${p.name} is no longer levitating.` });
+            }
+        }
+    },
     {
         name: 'Leech Seed',
         applies: (p) => p.volatileStatuses.some(s => s.name === 'Leech Seed'),
@@ -356,6 +368,8 @@ export const runEndOfTurnPhase = (currentBattleState, newLog) => {
             }
         }
     });
-
+    allActivePokemon.forEach(p => {
+        if (p) p.justSwitchedIn = false;
+    });
     console.log("END: End of Turn Phase");
 };

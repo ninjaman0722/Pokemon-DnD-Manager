@@ -4,36 +4,24 @@ import { getSprite } from '../../utils/api';
 import { TYPE_COLORS } from '../../config/gameData';
 
 const TrainerPokemonCard = ({ pokemon, permissions, onSaveNickname, onClick }) => {
-    // State to manage whether the input field is visible
     const [isEditing, setIsEditing] = useState(false);
-    // State to hold the value of the input field
     const [nickname, setNickname] = useState(pokemon.name);
 
     const handleSave = (e) => {
         e.stopPropagation();
-
         const trimmedNickname = nickname.trim();
-
         if (!trimmedNickname) {
-            // --- THIS IS THE CHANGE ---
-            // Get the original species name (e.g., "skeledirge")
             const originalName = pokemon.speciesName;
-            // Create a new capitalized version (e.g., "Skeledirge")
             const capitalizedName = originalName.charAt(0).toUpperCase() + originalName.slice(1);
-            // Save the newly capitalized version to the database
             onSaveNickname(pokemon.id, capitalizedName);
-            // --- END CHANGE ---
-        }
-        else if (trimmedNickname !== pokemon.name) {
+        } else if (trimmedNickname !== pokemon.name) {
             onSaveNickname(pokemon.id, trimmedNickname);
         }
-
         setIsEditing(false);
     };
 
     const handleNameClick = (e) => {
-        e.stopPropagation(); // Prevent the main card click from firing
-        // Only enter edit mode if the permission is granted
+        e.stopPropagation();
         if (permissions.canEditNicknames) {
             setIsEditing(true);
         }
@@ -49,8 +37,6 @@ const TrainerPokemonCard = ({ pokemon, permissions, onSaveNickname, onClick }) =
 
             <div className="text-center">
                 <img src={getSprite(pokemon)} alt={pokemon.name} className="mx-auto h-20 w-20 pointer-events-none" />
-
-                {/* Nickname editing logic */}
                 {isEditing ? (
                     <input
                         type="text"
@@ -68,15 +54,26 @@ const TrainerPokemonCard = ({ pokemon, permissions, onSaveNickname, onClick }) =
                         {permissions.canEditNicknames && <span className="text-xs text-gray-400 ml-1 hover:underline">(edit)</span>}
                     </p>
                 )}
-
-                {/* --- THESE ARE THE MISSING LINES --- */}
                 <p className="text-xs text-gray-300">Lvl {pokemon.level}</p>
                 <div className="w-full bg-gray-900 rounded-full h-2 my-1">
                     <div className="bg-green-500 h-2 rounded-full" style={{ width: `${(pokemon.currentHp / pokemon.maxHp) * 100}%` }}></div>
                 </div>
-                {/* --- END MISSING LINES --- */}
             </div>
-            <div className="flex flex-wrap justify-center gap-1 mt-1">{pokemon.types?.map(type => <span key={type} className={`px-1.5 py-0.5 text-xs rounded-full uppercase font-bold ${TYPE_COLORS[type]}`}>{type}</span>)}</div>
+            
+            {/* --- THIS IS THE CORRECTED SECTION --- */}
+            <div className="flex flex-wrap justify-center gap-1 mt-1">
+                {pokemon.types?.map((type, index) => {
+                    // This line checks if 'type' is an object and gets the name; otherwise, it uses the string directly.
+                    const typeName = (typeof type === 'object' && type !== null) ? type.name : type;
+
+                    // Use the sanitized 'typeName' for the key, color lookup, and display text.
+                    return (
+                        <span key={`${typeName}-${index}`} className={`px-1.5 py-0.5 text-xs rounded-full uppercase font-bold ${TYPE_COLORS[typeName]}`}>
+                            {typeName}
+                        </span>
+                    );
+                })}
+            </div>
         </div>
     );
 };

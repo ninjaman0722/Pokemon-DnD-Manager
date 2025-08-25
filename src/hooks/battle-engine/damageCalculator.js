@@ -1,8 +1,9 @@
 import { TYPE_CHART, GUARANTEED_CRIT_MOVES } from '../../config/gameData';
 import { abilityEffects } from './abilityEffects';
 import * as itemEffectsManager from './itemEffects';
-import { getEffectiveAbility, getStatModifier } from './battleUtils';
+import { getEffectiveAbility, getStatModifier, isWeatherActive } from './battleUtils';
 import { calculateStatChange } from './stateModifiers';
+
 
 const { itemEffects } = itemEffectsManager;
 
@@ -17,7 +18,7 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
 
         // Using a simplified version of the main damage formula
         const damage = Math.floor(Math.floor(Math.floor(2 * level / 5 + 2) * power * attack / defense) / 50) + 2;
-        
+
         // This calculation intentionally bypasses all standard modifiers:
         // - STAB
         // - Items (e.g., Life Orb)
@@ -30,14 +31,20 @@ export const calculateDamage = (attacker, defender, move, isCritical, currentBat
     }
 
     const weather = currentBattleState.field.weather;
-    if (move.damage_class.name !== 'status') {
+    const weatherIsActive = isWeatherActive(currentBattleState);
+    if (weatherIsActive && currentBattleState.field.weather === 'sandstorm') {
+        if (defender.types.includes('rock') && isSpecial) {
+            details.defense *= 1.5;
+        }
+    }
+    if (move.damage_class.name !== 'status' && weatherIsActive) {
         if (weather === 'harsh-sunshine' && move.type === 'water') {
             newLog.push({ type: 'text', text: "The Water-type attack evaporated in the harsh sunlight!" });
-            return { damage: 0, effectiveness: 0, move: move }; // Move fails
+            return { damage: 0, effectiveness: 0, move: move };
         }
         if (weather === 'heavy-rain' && move.type === 'fire') {
             newLog.push({ type: 'text', text: "The Fire-type attack was extinguished by the heavy rain!" });
-            return { damage: 0, effectiveness: 0, move: move }; // Move fails
+            return { damage: 0, effectiveness: 0, move: move };
         }
     }
     const defenderAbilityId = getEffectiveAbility(defender, currentBattleState)?.id;

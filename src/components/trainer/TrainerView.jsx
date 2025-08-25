@@ -228,7 +228,10 @@ const TrainerView = () => {
                                 const isHeld = heldPokemon?.pokemon.id === pokemon?.id;
 
                                 return pokemon ? (
-                                    <div className={`rounded-lg transition-all duration-200 ${selectedPokemon?.id === pokemon.id && !isHeld ? 'bg-indigo-700 ring-2 ring-indigo-400' : ''} ${isHeld ? 'opacity-30 ring-2 ring-yellow-400' : ''}`}>
+                                    <div
+                                        key={pokemon.id} // Add unique key here
+                                        className={`rounded-lg transition-all duration-200 ${selectedPokemon?.id === pokemon.id && !isHeld ? 'bg-indigo-700 ring-2 ring-indigo-400' : ''} ${isHeld ? 'opacity-30 ring-2 ring-yellow-400' : ''}`}
+                                    >
                                         <TrainerPokemonCard
                                             pokemon={pokemon}
                                             permissions={finalPermissions}
@@ -237,7 +240,11 @@ const TrainerView = () => {
                                         />
                                     </div>
                                 ) : (
-                                    <div key={`empty-roster-${index}`} onClick={() => handleCardClick(null, destination)} className="m-1 bg-gray-800/50 rounded-lg w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-700/50 border-2 border-dashed border-gray-600">
+                                    <div
+                                        key={`empty-roster-${index}`}
+                                        onClick={() => handleCardClick(null, destination)}
+                                        className="m-1 bg-gray-800/50 rounded-lg w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-700/50 border-2 border-dashed border-gray-600"
+                                    >
                                         {heldPokemon && <span className="text-gray-500">Drop Here</span>}
                                     </div>
                                 );
@@ -252,7 +259,31 @@ const TrainerView = () => {
                                 <img src={getSprite(selectedPokemon)} alt={selectedPokemon.name} className="h-60 w-60" />
                                 <div className="text-center mt-2 w-full">
                                     <div className="flex justify-center gap-2 mb-3">
-                                        {selectedPokemon.types.map(type => <span key={type} className={`px-3 py-1 text-base rounded font-bold ${TYPE_COLORS[type]}`}>{type.toUpperCase()}</span>)}
+                                        {selectedPokemon.types.map((type, index) => {
+                                            // Handle different possible formats of 'type'
+                                            let typeName;
+                                            if (typeof type === 'object' && type !== null) {
+                                                // If type.name is an object, extract its name property
+                                                typeName = typeof type.name === 'object' && type.name !== null ? type.name.name : type.name;
+                                            } else {
+                                                typeName = type; // Direct string
+                                            }
+
+                                            // Fallback if typeName is still not a string
+                                            if (typeof typeName !== 'string') {
+                                                console.warn('Invalid type data:', type);
+                                                return null; // Skip rendering this type to avoid errors
+                                            }
+
+                                            return (
+                                                <span
+                                                    key={`${typeName}-${index}`}
+                                                    className={`px-3 py-1 text-base rounded font-bold ${TYPE_COLORS[typeName] || 'bg-gray-500'}`}
+                                                >
+                                                    {typeName.toUpperCase()}
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                     <h3 className="text-4xl font-bold">{selectedPokemon.name}</h3>
                                     <div className="w-full bg-gray-900 rounded-full h-5 my-2 border border-gray-600">
@@ -283,13 +314,39 @@ const TrainerView = () => {
                                 <div>
                                     <h4 className="font-bold text-indigo-300 mb-1">Moves</h4>
                                     <div className="space-y-2">
-                                        {(selectedPokemon.moves || []).map(move => (
-                                            <div key={move.name} className={`p-2 rounded-md bg-gray-900`}>
-                                                <div className="flex justify-between items-center mb-1"><p className="font-semibold capitalize text-white mix-blend-screen">{move.name}</p><p className="text-xs">{move.pp}/{move.maxPp} PP</p></div>
-                                                <div className="flex gap-4 text-xs text-gray-400 mb-1"><div className="flex items-center gap-1"><span className={`w-3 h-3 rounded-full ${TYPE_COLORS[move.type]}`}></span>{move.type}</div><div className="flex items-center gap-1">{MOVE_CATEGORY_ICONS[move.damage_class]} {move.damage_class}</div><span>Pwr: {move.power || '—'}</span><span>Acc: {move.accuracy || '—'}</span></div>
-                                                <p className="text-xs text-gray-300 italic">{getMoveDescription(move)}</p>
-                                            </div>
-                                        ))}
+                                        {(selectedPokemon.moves || []).map(move => {
+                                            // Normalize move.type
+                                            const typeName = typeof move.type === 'object' && move.type !== null ? move.type.name : move.type;
+                                            // Normalize move.damage_class
+                                            const damageClass = typeof move.damage_class === 'object' && move.damage_class !== null ? move.damage_class.name : move.damage_class;
+
+                                            // Skip rendering if typeName or damageClass is invalid
+                                            if (typeof typeName !== 'string' || typeof damageClass !== 'string') {
+                                                console.warn('Invalid move data:', move);
+                                                return null; // Skip this move to avoid errors
+                                            }
+
+                                            return (
+                                                <div key={move.name} className={`p-2 rounded-md bg-gray-900`}>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <p className="font-semibold capitalize text-white mix-blend-screen">{move.name}</p>
+                                                        <p className="text-xs">{move.pp}/{move.maxPp} PP</p>
+                                                    </div>
+                                                    <div className="flex gap-4 text-xs text-gray-400 mb-1">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`w-3 h-3 rounded-full ${TYPE_COLORS[typeName] || 'bg-gray-500'}`}></span>
+                                                            {typeName}
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            {MOVE_CATEGORY_ICONS[damageClass] || '—'} {damageClass}
+                                                        </div>
+                                                        <span>Pwr: {move.power || '—'}</span>
+                                                        <span>Acc: {move.accuracy || '—'}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-300 italic">{getMoveDescription(move)}</p>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>

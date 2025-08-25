@@ -62,6 +62,12 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const opponentActivePokemon = getActivePokemon(opponentTeam, opponentIndices);
 
     const allActivePokemon = useMemo(() => [...playerActivePokemon, ...opponentActivePokemon], [playerActivePokemon, opponentActivePokemon]);
+    if (process.env.NODE_ENV === 'development') {
+        const allIds = allActivePokemon.map(p => p.id);
+        if (new Set(allIds).size !== allIds.length) {
+            console.error('Duplicate Pokémon IDs detected in battle:', allIds);
+        }
+    }
     const [targetingInfo, setTargetingInfo] = useState({ isActive: false, potential: [], selected: [], baseAction: null });
     const handleTargetSelection = (targetId) => {
         if (!targetingInfo.isActive || !targetingInfo.potential.includes(targetId)) return;
@@ -117,10 +123,14 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
                 potentialTargets = potentialAllies; break;
             case 'ally':
                 potentialTargets = potentialAllies.filter(p => p.id !== baseAction.pokemon.id); break;
-            default:
-                // This case handles self-targeted or field-wide moves.
-                updateQueuedAction({ ...baseAction, targetIds: [baseAction.pokemon.id] }); return;
-        }
+        default:
+            updateQueuedAction({ 
+                ...baseAction, 
+                targetIds: [baseAction.pokemon.id],
+                hits: [{ targetId: baseAction.pokemon.id }] 
+            }); 
+            return;
+    }
         setTargetingInfo({ isActive: true, potential: potentialTargets.map(p => p.id), selected: [], baseAction });
     };
     useEffect(() => {
@@ -180,10 +190,33 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
     const renderControlArea = () => {
         const actionPanelContent = () => {
             if (phase === 'REPLACEMENT' && replacementInfo) {
-                const { teamIndex, slotIndex } = replacementInfo;
+                // --- ADD LOG #1 ---
+                console.log('[UI Log] Received replacementInfo:', replacementInfo);
+
+                const { teamIndex, slotIndex, originalTrainerId } = replacementInfo;
                 const team = teams[teamIndex];
-                const faintedPokemon = team.pokemon[activePokemonIndices[teamIndex === 0 ? 'players' : 'opponent'][slotIndex]];
-                const availableReplacements = team.pokemon.filter((p, i) => !p.fainted && !activePokemonIndices[teamIndex === 0 ? 'players' : 'opponent'].includes(i));
+                const teamKey = teamIndex === 0 ? 'players' : opponentKey;
+                const activeIndicesForTeam = activePokemonIndices[teamKey] || [];
+                const faintedPokemon = team.pokemon[activeIndicesForTeam[slotIndex]];
+                
+                // --- REPLACE THE 'availableReplacements' LINE WITH THIS BLOCK ---
+                console.log(`[UI Log] Filtering for Pokémon with trainer ID: "${originalTrainerId}"`);
+                const availableReplacements = team.pokemon.filter((p, i) => {
+                    if (!p || p.fainted || activeIndicesForTeam.includes(i)) {
+                        return false; // Skip fainted or active Pokémon
+                    }
+                    
+                    const trainerIdMatch = p.originalTrainerId === originalTrainerId;
+                    console.log(`[UI Log] Checking benched Pokémon "${p.name}": Its trainer ID is "${p.originalTrainerId}". Does it match? ${trainerIdMatch}`);
+                    
+                    return trainerIdMatch;
+                });
+                console.log('[UI Log] Final list of available replacements:', availableReplacements);
+                // --- END REPLACEMENT ---
+
+                if (!faintedPokemon) {
+                    return <div>Error: Could not find the fainted Pokémon's data.</div>;
+                }
                 return (
                     <div className="bg-gray-900 rounded-lg p-4 flex flex-col justify-between h-full">
                         <p className="text-lg">Choose a replacement for {faintedPokemon.name}:</p>
@@ -246,6 +279,8 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
                 onTurnChange={handleTurnChange}
                 onFieldChange={handleFieldChange}
                 onHazardChange={handleHazardChange}
+                playerTeamId={playerTeam.id} // Pass player's actual team ID
+                opponentTeamId={opponentKey} // Pass opponent's actual team ID
                 targetingInfo={{ isActive: false }} // Pass a dummy object as it's no longer used here
             />
         );
@@ -283,7 +318,7 @@ const BattleScreen = ({ battleState, battleId, allTrainers }) => {
             <TurnOrderDisplay turnOrder={turnOrder} turn={battleState.turn} />
             <div className="h-2/3 flex flex-col justify-between relative bg-gray-700 rounded-lg p-4 bg-no-repeat bg-cover bg-center">
                 <HazardDisplay side="player" hazards={field.hazards?.players} />
-                <HazardDisplay side="opponent" hazards={field.hazards?.opponent} />
+                <HazardDisplay side="opponent" hazards={field.hazards?.[opponentKey]} />
                 <TeamSidebar team={opponentTeam} side="right" />
                 <TeamSidebar team={playerTeam} side="left" />
                 <TargetingBanner

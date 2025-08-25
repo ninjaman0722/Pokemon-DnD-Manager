@@ -43,8 +43,9 @@ export const runOnSwitchIn = (pokemonArray, currentBattleState, newLog) => {
         }
         if (pokemon.fainted) return;
 
-        // --- HAZARD LOGIC (with Magic Guard check) ---
-        const teamKey = currentBattleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id === 'players' ? 'players' : 'opponent';
+        const teamKey = currentBattleState.teams.find(t => t.pokemon.some(p => p.id === pokemon.id))?.id;
+        if (!teamKey) return; 
+
         const teamHazards = currentBattleState.field.hazards?.[teamKey];
         if (!teamHazards) return;
 

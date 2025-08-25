@@ -11,10 +11,10 @@
  * @param {object} [move] - The move being used, when applicable.
  * @param {number} [damage] - The calculated damage, when applicable.
  */
-import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTABLE_MOVES, CONTACT_MOVES, SOUND_MOVES } from '../../config/gameData';
+import { BITING_MOVES, AURA_PULSE_MOVES, PUNCHING_MOVES, RECOIL_MOVES, REFLECTABLE_MOVES, CONTACT_MOVES, SOUND_MOVES, OHKO_MOVES, ANTICIPATION_NORMAL_TYPE_MOVES, TYPE_CHART } from '../../config/gameData';
 import { calculateStatChange } from './stateModifiers';
 import { calculateStat } from '../../utils/api';
-import { getStatModifier, getEffectiveAbility } from './battleUtils';
+import { getStatModifier, getEffectiveAbility, isWeatherActive } from './battleUtils';
 import { resolveChance, getActiveAllies, getActiveOpponents } from './battleUtils';
 
 const setWeather = (weatherType, turns, message, pokemon, battleState, newLog) => {
@@ -43,7 +43,161 @@ const setTerrain = (terrainType, turns, message, pokemon, battleState, newLog) =
 
 // --- Ability Definitions ---
 export const abilityEffects = {
-    // --- Switch-In Abilities ---
+    'aftermath': {
+        onFaint: (pokemon, attacker, moveMadeContact, battleState, newLog) => {
+            // Check if another Pokémon's Damp ability is active on the field
+            const isDampActive = battleState.teams.some(team =>
+                team.pokemon.some(p =>
+                    p && !p.fainted && getEffectiveAbility(p, battleState)?.id === 'damp'
+                )
+            );
+
+            if (isDampActive) {
+                newLog.push({ type: 'text', text: `A Pokémon's Damp ability prevented Aftermath!` });
+                return; // Stop the ability from activating
+            }
+
+            // Check if the other conditions are met (contact move, attacker isn't immune)
+            const attackerAbilityId = getEffectiveAbility(attacker, battleState)?.id;
+            if (moveMadeContact && !attacker.fainted && attackerAbilityId !== 'magic-guard') {
+                // Calculate damage equal to 1/4 of the fainted Pokémon's max HP
+                const damage = Math.max(1, Math.floor(pokemon.maxHp / 4));
+                attacker.currentHp = Math.max(0, attacker.currentHp - damage);
+
+                newLog.push({ type: 'text', text: `${attacker.name} was hurt by ${pokemon.name}'s Aftermath!` });
+
+                // Check if the attacker fainted from Aftermath damage
+                if (attacker.currentHp === 0) {
+                    attacker.fainted = true;
+                    newLog.push({ type: 'text', text: `${attacker.name} fainted!` });
+                }
+            }
+        }
+    },
+    'air-lock': {
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            if (battleState.field.weather !== 'none') {
+                newLog.push({ type: 'text', text: 'The effects of weather disappeared.' });
+            }
+        }
+    },
+    'cloud-nine': {
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            if (battleState.field.weather !== 'none') {
+                newLog.push({ type: 'text', text: 'The effects of weather disappeared.' });
+            }
+        }
+    },
+    'anger-point': {
+        onTakeDamage: (damage, pokemon, move, battleState, newLog, attackerAbilityId, isCritical) => {
+            // Check if the move was a critical hit, dealt damage, and the Attack stat is not already maxed out.
+            if (isCritical && damage > 0 && pokemon.stat_stages['attack'] < 6) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Anger Point was triggered!` });
+
+                // Define the stat changing utility locally.
+                const statChanger = (target, stat, change) => {
+                    const { updatedTarget, newLog: statLog } = calculateStatChange(target, stat, change, battleState);
+                    Object.assign(target, updatedTarget);
+                    newLog.push(...statLog);
+                };
+
+                // This line ensures the Attack stat is maximized to +6, regardless of its current stage.
+                const changeAmount = 6 - pokemon.stat_stages['attack'];
+                statChanger(pokemon, 'attack', changeAmount);
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Attack was maximized!` });
+            }
+            // Always return the original damage value.
+            return damage;
+        }
+    },
+    'anger-shell': {
+        onTakeDamage: (damage, pokemon, move, battleState, newLog) => {
+            // Calculate what the HP will be after the damage is applied.
+            const hpAfterDamage = pokemon.currentHp - damage;
+
+            // Check the three conditions for activation:
+            // 1. HP was above 50% before the attack.
+            // 2. HP will be at or below 50% after the attack.
+            // 3. The Pokémon survives the attack.
+            if (pokemon.currentHp > pokemon.maxHp / 2 && hpAfterDamage <= pokemon.maxHp / 2 && hpAfterDamage > 0) {
+                newLog.push({ type: 'text', text: `${pokemon.name}'s Anger Shell was activated!` });
+
+                // Define the stat changing utility.
+                const statChanger = (target, stat, change) => {
+                    const { updatedTarget, newLog: statLog } = calculateStatChange(target, stat, change, battleState);
+                    Object.assign(target, updatedTarget);
+                    newLog.push(...statLog);
+                };
+
+                // Apply all the stat changes.
+                statChanger(pokemon, 'attack', 1);
+                statChanger(pokemon, 'special-attack', 1);
+                statChanger(pokemon, 'speed', 1);
+                statChanger(pokemon, 'defense', -1);
+                statChanger(pokemon, 'special-defense', -1);
+
+                newLog.push({ type: 'text', text: `Its Attack, Sp. Atk, and Speed rose, while its Defense and Sp. Def fell!` });
+            }
+
+            // Always return the original damage value.
+            return damage;
+        }
+    },
+    'anticipation': {
+        onSwitchIn: (pokemon, battleState, newLog) => {
+            const opponents = getActiveOpponents(pokemon, battleState);
+            if (opponents.length === 0) return;
+
+            let shouldShudder = false;
+
+            // Loop through each opponent to check their moves.
+            for (const opponent of opponents) {
+                for (const move of opponent.moves) {
+                    // Check for One-Hit KO moves.
+                    if (OHKO_MOVES.has(move.id)) {
+                        shouldShudder = true;
+                        break; // Found a triggering move, no need to check others for this opponent.
+                    }
+
+                    // Only consider damaging moves for the super-effective check.
+                    if (move.damage_class.name === 'status') continue;
+
+                    // Determine the move's type for this specific check.
+                    let moveTypeForCheck = ANTICIPATION_NORMAL_TYPE_MOVES.has(move.id) ? 'normal' : move.type;
+
+                    // Calculate effectiveness against the Pokémon with Anticipation.
+                    let effectiveness = 1;
+                    pokemon.types.forEach(type => {
+                        effectiveness *= TYPE_CHART[moveTypeForCheck]?.[type] ?? 1;
+                    });
+
+                    // NOTE: This check is for a potential future feature. The engine does not currently
+                    // support Inverse Battles, but this is where the logic would go.
+                    if (battleState.field?.isInverseBattle) {
+                        if (effectiveness < 1 && effectiveness > 0) effectiveness = 2; // Was not very effective, now super effective
+                        else if (effectiveness > 1) effectiveness = 0.5; // Was super effective, now not very effective
+                        else if (effectiveness === 0) effectiveness = 2; // Was immune, now super effective
+                    }
+
+                    if (effectiveness > 1) {
+                        shouldShudder = true;
+                        break; // Found a triggering move.
+                    }
+                }
+                if (shouldShudder) break; // A move from this opponent triggered it, stop checking other opponents.
+            }
+
+            if (shouldShudder) {
+                newLog.push({ type: 'text', text: `${pokemon.name} shuddered with anticipation!` });
+            }
+        }
+    },
+    'suction-cups': {
+        onPreventForceSwitch: (pokemon, newLog) => {
+            newLog.push({ type: 'text', text: `${pokemon.name} is anchored by its Suction Cups!` });
+            return true; // Return true to block the switch
+        }
+    },
     'intimidate': {
         onSwitchIn: (pokemon, battleState, newLog, statChanger) => {
             const opponents = getActiveOpponents(pokemon, battleState);
@@ -581,7 +735,7 @@ export const abilityEffects = {
     },
     'sand-rush': {
         onModifyStat: (stat, value, pokemon, battleState) => {
-            if (stat === 'speed' && battleState.field.weather === 'sandstorm') {
+            if (stat === 'speed' && isWeatherActive(battleState) && battleState.field.weather === 'sandstorm') {
                 return value * 2;
             }
             return value;
@@ -590,7 +744,7 @@ export const abilityEffects = {
 
     'slush-rush': {
         onModifyStat: (stat, value, pokemon, battleState) => {
-            if (stat === 'speed' && battleState.field.weather === 'snow') {
+            if (stat === 'speed' && isWeatherActive(battleState) && battleState.field.weather === 'snow') {
                 return value * 2;
             }
             return value;
@@ -749,14 +903,14 @@ export const abilityEffects = {
         }
     },
 
-'gooey': {
-    onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
-        if (attacker.stat_stages['speed'] > -6) {
-            newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${pokemon.name}'s Gooey!` });
-            statChanger(attacker, 'speed', -1, newLog, battleState);
+    'gooey': {
+        onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
+            if (attacker.stat_stages['speed'] > -6) {
+                newLog.push({ type: 'text', text: `${attacker.name}'s speed was lowered by ${pokemon.name}'s Gooey!` });
+                statChanger(attacker, 'speed', -1, newLog, battleState);
+            }
         }
-    }
-},
+    },
     'tangling-hair': {
         onDamagedByContact: (pokemon, attacker, newLog, statChanger, battleState) => {
             if (attacker.stat_stages['speed'] > -6) {
@@ -937,7 +1091,7 @@ export const abilityEffects = {
     },
     'swift-swim': {
         onModifyStat: (stat, value, pokemon, battleState) => {
-            if (stat === 'speed' && (battleState.field.weather === 'rain' || battleState.field.weather === 'heavy-rain')) {
+            if (stat === 'speed' && isWeatherActive(battleState) && (battleState.field.weather === 'rain' || battleState.field.weather === 'heavy-rain')) {
                 if (pokemon.heldItem?.id === 'utility-umbrella') return value;
                 return value * 2;
             }
@@ -946,7 +1100,7 @@ export const abilityEffects = {
     },
     'chlorophyll': {
         onModifyStat: (stat, value, pokemon, battleState) => {
-            if (stat === 'speed' && (battleState.field.weather === 'sunshine' || battleState.field.weather === 'harsh-sunshine')) {
+            if (stat === 'speed' && isWeatherActive(battleState) && (battleState.field.weather === 'sunshine' || battleState.field.weather === 'harsh-sunshine')) {
                 if (pokemon.heldItem?.id === 'utility-umbrella') return value;
                 return value * 2;
             }
@@ -989,16 +1143,16 @@ export const abilityEffects = {
             }
         }
     },
-    // Marker abilities that don't have hooks but need to exist in the object
-    'unaware': {},
-    'simple': {},
-    'wonder-guard': {},
-    'mold-breaker': {},
     'pressure': {
         onModifyPP: (ppCost, move, user) => {
             return ppCost + 1;
         }
     },
+    'arena-trap': {},
+    'unaware': {},
+    'simple': {},
+    'wonder-guard': {},
+    'mold-breaker': {},
     'stall': {},
     'unnerve': {},
     'sniper': {},
@@ -1006,4 +1160,6 @@ export const abilityEffects = {
     'neutralizing-gas': {},
     'stalwart': {},
     'propeller-tail': {},
+    'armor-tail': {},
+    'queenly-majesty': {},
 };

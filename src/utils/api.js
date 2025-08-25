@@ -1,5 +1,5 @@
 // src/utils/api.js
-import { getEffectiveAbility, getStatModifier } from '../hooks/battle-engine/battleUtils';
+import { getEffectiveAbility, getStatModifier, isWeatherActive } from '../hooks/battle-engine/battleUtils';
 import { POKEAPI_BASE_URL, STAGE_MULTIPLIERS } from '../config/gameData';
 import { officialFormsData } from '../config/officialFormsData';
 
@@ -88,7 +88,8 @@ export async function fetchMoveData(moveName) {
 
         const moveData = {
             name: toTitleCase(data.name),
-            id: data.name, // The functional, hyphenated ID
+            id: data.name,
+            priority: data.priority,
             type: data.type.name,
             damage_class: data.damage_class,
             power: data.power || 0,
@@ -182,18 +183,30 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
             name: toTitleCase(r.value.name), // Display Name
             id: r.value.name // Functional ID
         }));
-    const moves = moveResults.filter(r => r.status === 'fulfilled').map(r => r.value);
+        const moves = moveResults.map(result => {
+        if (result.status === 'fulfilled') {
+            return result.value; // The move data was fetched successfully.
+        }
+        // If the move failed to load (e.g., from a typo), return null.
+        // This prevents the moves array from changing size unexpectedly.
+        console.error("A move failed to load, possibly due to a typo:", result.reason?.message);
+        return null; 
+    });
     const baseStats = Object.fromEntries(pokeData.stats.map(s => [s.stat.name, s.base_stat]));
     const types = pokeData.types.map(t => t.type.name);
 
-    // --- CORRECTED ORDER ---
-    // Declare these identifiers first.
     const speciesName = speciesData.name;
     const speciesIdentifier = pokeData.name;
 
-    // Now, calculate the HP using the identifier.
+    let uniqueId;
+    if (crypto && crypto.randomUUID) {
+        uniqueId = `${speciesIdentifier}-${crypto.randomUUID().slice(0, 8)}`;
+    } else {
+        // Fallback for older environments
+        uniqueId = `${speciesIdentifier}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+    }
+
     const newMaxHp = calculateStat(baseStats.hp, level, true, speciesIdentifier);
-    // --- END CORRECTION ---
 
     let formLookupKey = speciesName;
     if (formLookupKey.includes('-')) {
@@ -212,11 +225,11 @@ export async function fetchPokemonData(name, level = 50, heldItemName = '', cust
         'special-defense': calculateStat(baseStats['special-defense'], level),
         speed: calculateStat(baseStats.speed, level),
     };
+
     return {
-        id: `${pokeKey}-${Math.random().toString(36).substring(2, 9)}`,
+        id: uniqueId,
         pokeApiId: pokeData.id,
         name: toTitleCase(speciesIdentifier), // Display Name
-        id: speciesIdentifier, // Functional ID
         speciesName: speciesName,
         level,
         gender: defaultGender,
@@ -275,11 +288,14 @@ export const calculateHitChance = (attacker, defender, move, battleState) => {
         return 100;
     }
     // Case 3: Weather-dependent accuracy
-    if ((move.id === 'thunder' || move.id === 'hurricane') && (battleState.field.weather === 'rain' || battleState.field.weather === 'heavy-rain')) {
-        return 100;
-    }
-    if (move.id === 'blizzard' && battleState.field.weather === 'snow') {
-        return 100;
+    const weatherIsActive = isWeatherActive(battleState);
+    if (weatherIsActive) {
+        if ((move.id === 'thunder' || move.id === 'hurricane') && (battleState.field.weather === 'rain' || battleState.field.weather === 'heavy-rain')) {
+            return 100;
+        }
+        if (move.id === 'blizzard' && battleState.field.weather === 'snow') {
+            return 100;
+        }
     }
 
     if (defender.volatileStatuses?.includes('Charging') && ['fly', 'dig', 'dive'].includes(defender.chargingMove?.id)) {

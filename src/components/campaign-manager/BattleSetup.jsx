@@ -1,100 +1,190 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, addDoc, serverTimestamp, collection, writeBatch } from 'firebase/firestore';
+import { doc, addDoc, serverTimestamp, collection, writeBatch } from 'firebase/firestore';
 import { db, appId } from '../../config/firebase';
 import { MAX_PARTY_SIZE } from '../../config/gameData';
 import { calculateStat, fetchPokemonData } from '../../utils/api';
-import PokemonCard from './PokemonCard';
-import TeamPreviewCard from './TeamPreviewCard';
 import PokemonEditorModal from './PokemonEditorModal';
-import AutocompleteInput from '../common/AutocompleteInput';
 import SaveScenarioModal from './SaveScenarioModal';
 
-// NEW: Stepper component for visual progress
-const Stepper = ({ currentStep, setStep }) => {
-    const steps = ['Settings', 'Player Team', 'Opponent Team', 'Review & Launch'];
-
-    // You can't go to a future step you haven't reached yet
-    const isStepDisabled = (stepIndex) => stepIndex + 1 > currentStep;
-
-    return (
-        <div className="flex justify-center items-center border-b-2 border-gray-700 mb-8 pb-4">
-            {steps.map((step, index) => (
-                <React.Fragment key={step}>
-                    <button
-                        onClick={() => !isStepDisabled(index) && setStep(index + 1)}
-                        disabled={isStepDisabled(index)}
-                        className="flex items-center gap-2 disabled:cursor-not-allowed"
-                    >
-                        <div
-                            className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-lg transition-colors ${currentStep === index + 1 ? 'bg-indigo-600 text-white' : 'bg-gray-600 text-gray-300'} 
-                                ${!isStepDisabled(index) ? 'hover:bg-indigo-500' : 'opacity-50'}`
-                            }
-                        >
-                            {index + 1}
-                        </div>
-                        <span className={`font-semibold hidden sm:inline ${currentStep === index + 1 ? 'text-white' : 'text-gray-400'}`}>
-                            {step}
-                        </span>
-                    </button>
-                    {index < steps.length - 1 && (
-                        <div className="flex-auto border-t-2 border-gray-600 mx-4"></div>
-                    )}
-                </React.Fragment>
-            ))}
-        </div>
-    );
-};
-
+import Stepper from './setup/Stepper';
+import Step1_Settings from './setup/Step1_Settings';
+import Step2_PlayerTeam from './setup/Step2_PlayerTeam';
+import Step3_OpponentTeam from './setup/Step3_OpponentTeam';
+import Step4_Review from './setup/Step4_Review';
 
 const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
     const { trainers = [], combinedPokemonList = [], itemList = [], customPokemon = [], customMoves = [] } = state;
 
-    // NEW: State to manage the current step of the wizard
     const [currentStep, setCurrentStep] = useState(1);
     const selectedCampaign = state.campaigns.find(c => c.id === state.selectedCampaignId);
+
+    // Settings State
     const [battleType, setBattleType] = useState('TRAINER');
-    const [numTrainers, setNumTrainers] = useState(1);
     const [pokemonPerTrainer, setPokemonPerTrainer] = useState(6);
+    const [numTrainers, setNumTrainers] = useState(1);
+    const [numOpponentTrainers, setNumOpponentTrainers] = useState(1); // <-- New
+    const [fieldSettings, setFieldSettings] = useState({
+        weather: 'None',
+        terrain: 'None',
+        trickRoom: false,
+        playerHazards: {},
+        opponentHazards: {}
+    });
+    // Team State
     const [playerTrainerIds, setPlayerTrainerIds] = useState([]);
     const [playerTeam, setPlayerTeam] = useState([]);
-    const [opponentTrainerId, setOpponentTrainerId] = useState('');
+    const [opponentTrainerIds, setOpponentTrainerIds] = useState([]); // <-- Changed
     const [opponentTeam, setOpponentTeam] = useState([]);
+
+    // Utility State
     const [wildPokemonToAdd, setWildPokemonToAdd] = useState('');
     const [editingPokemon, setEditingPokemon] = useState(null);
     const [editingWildPokemon, setEditingWildPokemon] = useState(null);
     const [generatedBattle, setGeneratedBattle] = useState(null);
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
+    // Derived Constants
     const partyMembers = trainers.filter(t => t.category === 'partyMembers');
     const opponents = trainers.filter(t => t.category !== 'partyMembers');
     const selectedPlayerTrainers = trainers.filter(t => playerTrainerIds.includes(t.id));
-    const opponentTrainer = trainers.find(t => t.id === opponentTrainerId);
+    const selectedOpponentTrainers = trainers.filter(t => opponentTrainerIds.includes(t.id)); // <-- Changed
 
-    // (No changes needed to the logic functions)
+    // MODIFIED: A more robust way to derive the ordered teams.
+    const rosterOrderMap = new Map();
+    trainers.forEach(trainer => {
+        trainer.roster.forEach((pokemon, index) => {
+            rosterOrderMap.set(pokemon.id, index);
+        });
+    });
+
+    // Create the ordered team by SORTING the existing `playerTeam` state.
+    // This preserves the `originalTrainerId` added during selection.
+    const orderedPlayerTeam = [...playerTeam].sort((a, b) => {
+        const trainerAIndex = playerTrainerIds.indexOf(a.originalTrainerId);
+        const trainerBIndex = playerTrainerIds.indexOf(b.originalTrainerId);
+        if (trainerAIndex !== trainerBIndex) {
+            return trainerAIndex - trainerBIndex;
+        }
+        return rosterOrderMap.get(a.id) - rosterOrderMap.get(b.id);
+    });
+
+    // Do the same for the opponent team.
+    const orderedOpponentTeam = [...opponentTeam].sort((a, b) => {
+        const trainerAIndex = opponentTrainerIds.indexOf(a.originalTrainerId);
+        const trainerBIndex = opponentTrainerIds.indexOf(b.originalTrainerId);
+        if (trainerAIndex !== trainerBIndex) {
+            return trainerAIndex - trainerBIndex;
+        }
+        return rosterOrderMap.get(a.id) - rosterOrderMap.get(b.id);
+    });
+
+    // For Wild battles, selection order is the only order, so we use the state variable.
+    const finalOpponentTeam = battleType === 'WILD' ? opponentTeam : orderedOpponentTeam;
+
+
+    const handleFieldSettingChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setFieldSettings(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
+    };
+
+    const onHazardChange = (side, hazard, isChecked) => {
+        setFieldSettings(prev => {
+            // Create a full copy of the previous state to modify
+            const newState = { ...prev };
+
+            if (side === 'player') {
+                const newPlayerHazards = { ...prev.playerHazards };
+                if (isChecked) {
+                    newPlayerHazards[hazard] = true;
+                } else {
+                    delete newPlayerHazards[hazard];
+                }
+                // Update the playerHazards property on our new state object
+                newState.playerHazards = newPlayerHazards;
+
+            } else if (side === 'opponent') {
+                const newOpponentHazards = { ...prev.opponentHazards };
+                if (isChecked) {
+                    newOpponentHazards[hazard] = true;
+                } else {
+                    delete newOpponentHazards[hazard];
+                }
+                // Update the opponentHazards property on our new state object
+                newState.opponentHazards = newOpponentHazards;
+            }
+
+            // Return the complete, updated state object
+            return newState;
+        });
+    };
+
+    // Helper to format the field state for saving
+    const getFormattedFieldState = (playerTeamId, opponentTeamId) => {
+        const formattedHazards = (hazardObj) => {
+            const result = {};
+            for (const hazard in hazardObj) {
+                const key = hazard.toLowerCase().replace(' ', '-');
+                result[key] = hazard.includes('Spikes') ? 1 : true; // Default to 1 layer for spikes
+            }
+            return result;
+        };
+
+        return {
+            weather: fieldSettings.weather !== 'None' ? fieldSettings.weather.toLowerCase().replace(' ', '-') : 'none',
+            weatherTurns: fieldSettings.weather !== 'None' ? 5 : 0,
+            terrain: fieldSettings.terrain !== 'None' ? fieldSettings.terrain.toLowerCase().replace(' ', '-') : 'none',
+            terrainTurns: fieldSettings.terrain !== 'None' ? 5 : 0,
+            trickRoomTurns: fieldSettings.trickRoom ? 5 : 0,
+            magicRoomTurns: 0,
+            gravityTurns: 0,
+            wonderRoomTurns: 0,
+            hazards: {
+                [playerTeamId]: formattedHazards(fieldSettings.playerHazards),
+                [opponentTeamId]: formattedHazards(fieldSettings.opponentHazards)
+            }
+        };
+    };
+
+    // All logic functions (useEffect, handleSaveScenario, startBattle, etc.) remain here...
     useEffect(() => {
         if (initialScenario) {
             setPlayerTrainerIds(initialScenario.teams.player.trainerIds);
             setPlayerTeam(initialScenario.teams.player.pokemon);
-            setOpponentTrainerId(initialScenario.teams.opponent.trainerId);
+            // Handle single or multiple opponent IDs from saved scenarios
+            const oppIds = Array.isArray(initialScenario.teams.opponent.trainerIds)
+                ? initialScenario.teams.opponent.trainerIds
+                : (initialScenario.teams.opponent.trainerId ? [initialScenario.teams.opponent.trainerId] : []);
+            setOpponentTrainerIds(oppIds);
             setOpponentTeam(initialScenario.teams.opponent.pokemon);
             onLoadComplete();
-            setCurrentStep(4); // Jump to the review step when loading a scenario
+            setCurrentStep(4);
         }
     }, [initialScenario, onLoadComplete]);
 
     useEffect(() => {
         if (battleType === 'BOSS') { setNumTrainers(6); setPokemonPerTrainer(1); }
-        setOpponentTeam([]); setOpponentTrainerId('');
-    }, [battleType]);
+        setOpponentTeam([]);
+        setOpponentTrainerIds([]);
+    }, [battleType, numOpponentTrainers]);
 
-    useEffect(() => { setPlayerTeam([]); setPlayerTrainerIds([]); }, [numTrainers, pokemonPerTrainer]);
+    useEffect(() => {
+        setPlayerTeam([]);
+        setPlayerTrainerIds([]);
+    }, [numTrainers, pokemonPerTrainer]);
 
     const handleSaveScenario = async (scenarioName) => {
         dispatch({ type: 'SET_LOADING', payload: 'Saving scenario...' });
         const resetPokemon = (p) => ({ ...p, currentHp: p.maxHp, fainted: false });
-        const freshPlayerTeam = playerTeam.map(resetPokemon);
-        let freshOpponentTeam = opponentTeam.map(resetPokemon);
-        if (battleType === 'BOSS' && opponentTrainer.finalPokemon) {
+        const freshPlayerTeam = orderedPlayerTeam.map(p => addCalculatedStats(structuredClone(p)));
+        let freshOpponentTeam = finalOpponentTeam.map(p => addCalculatedStats(structuredClone(p)));
+
+
+        // FIX: Get the single boss trainer from the selected trainers array
+        const opponentTrainer = battleType === 'BOSS' ? selectedOpponentTrainers[0] : null;
+        if (opponentTrainer && opponentTrainer.finalPokemon) {
             const freshFinalPokemon = resetPokemon(scalePokemonToLevel(opponentTrainer.finalPokemon, selectedCampaign.partyLevel));
             freshOpponentTeam = [...freshOpponentTeam, freshFinalPokemon];
         }
@@ -102,10 +192,11 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
             name: scenarioName,
             createdAt: serverTimestamp(),
             level: selectedCampaign.partyLevel,
-            fieldState: { weather: 'none', terrain: 'none', hazards: { playerSide: {}, opponentSide: {} } },
+            fieldState: getFormattedFieldState('players', 'opponents'),
             teams: {
                 player: { trainerIds: playerTrainerIds, pokemon: freshPlayerTeam },
-                opponent: { trainerId: opponentTrainerId || null, pokemon: freshOpponentTeam }
+                // FIX: Save trainerIds array instead of single trainerId
+                opponent: { trainerIds: opponentTrainerIds, pokemon: freshOpponentTeam }
             }
         };
         try {
@@ -132,52 +223,63 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
         setPlayerTrainerIds(newIds);
         setPlayerTeam([]);
     };
-
+    const toggleOpponentTrainerSelection = (trainerId) => {
+        const newIds = opponentTrainerIds.includes(trainerId)
+            ? opponentTrainerIds.filter(id => id !== trainerId)
+            : [...opponentTrainerIds, trainerId];
+        if (newIds.length > numOpponentTrainers) {
+            dispatch({ type: "SET_ERROR", payload: `You can only select up to ${numOpponentTrainers} opponent(s).` });
+            return;
+        }
+        setOpponentTrainerIds(newIds);
+        setOpponentTeam([]);
+    };
     const togglePlayerPokemonSelection = (pokemon) => {
-        // This new line safely gets the partyLevel from either the root or defaultPermissions.
-        const partyLevel = selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
-        const scaledPokemon = { ...scalePokemonToLevel(pokemon, partyLevel), originalTrainerId: pokemon.originalTrainerId };
+        const isCurrentlySelected = playerTeam.some(p => p.id === pokemon.id);
 
-        if (playerTeam.some(p => p.id === pokemon.id)) {
-            setPlayerTeam(currentTeam => currentTeam.filter(p => p.id !== pokemon.id));
+        if (isCurrentlySelected) {
+            setPlayerTeam(current => current.filter(p => p.id !== pokemon.id));
         } else {
-            const playerTeamCount = playerTeam.filter(p => p.originalTrainerId === pokemon.originalTrainerId).length;
-            if (playerTeamCount >= pokemonPerTrainer) {
+            // Validation
+            const teamCount = playerTeam.filter(p => p.originalTrainerId === pokemon.originalTrainerId).length;
+            if (teamCount >= pokemonPerTrainer) {
                 dispatch({ type: "SET_ERROR", payload: `${pokemon.originalTrainer} can only bring ${pokemonPerTrainer} Pokémon.` });
                 return;
             }
-            if (playerTeam.length >= MAX_PARTY_SIZE * numTrainers) {
-                dispatch({ type: "SET_ERROR", payload: `The total party size cannot exceed ${MAX_PARTY_SIZE * numTrainers}.` });
-                return;
-            }
-            setPlayerTeam(currentTeam => [...currentTeam, scaledPokemon]);
+            // Create a new, clean, scaled object to store in state
+            const partyLevel = selectedCampaign.partyLevel || 50;
+            const newPokemon = { ...structuredClone(pokemon), ...scalePokemonToLevel(pokemon, partyLevel) };
+            setPlayerTeam(current => [...current, newPokemon]);
         }
     };
 
     const toggleOpponentPokemonSelection = (pokemon) => {
-        // This line is now fixed to safely find the party level from both possible locations.
-        const partyLevel = selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
-        const scaledPokemon = scalePokemonToLevel(pokemon, partyLevel);
-        setOpponentTeam(currentTeam => {
-            if (currentTeam.some(p => p.id === scaledPokemon.id)) { return currentTeam.filter(p => p.id !== scaledPokemon.id); }
-            if (currentTeam.length < MAX_PARTY_SIZE) { return [...currentTeam, scaledPokemon]; }
-            return currentTeam;
-        });
+        const isCurrentlySelected = opponentTeam.some(p => p.id === pokemon.id);
+
+        if (isCurrentlySelected) {
+            setOpponentTeam(current => current.filter(p => p.id !== pokemon.id));
+        } else {
+            // Validation
+            if (opponentTeam.length >= MAX_PARTY_SIZE) return;
+            // Create a new, clean, scaled object
+            const partyLevel = selectedCampaign.partyLevel || 50;
+            const newPokemon = { ...structuredClone(pokemon), ...scalePokemonToLevel(pokemon, partyLevel) };
+            setOpponentTeam(current => [...current, newPokemon]);
+        }
     };
 
     const handleWildPokemonSelect = async (pokemonName) => {
         dispatch({ type: 'SET_LOADING', payload: `Fetching ${pokemonName}...` });
         try {
-            // This new line safely gets the partyLevel here as well.
             const partyLevel = selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
             let pokemonData;
             const customMatch = customPokemon.find(p => p.name.toLowerCase() === pokemonName.toLowerCase());
             if (customMatch) {
-                // This is the fix: we now assign a level to the custom pokemon.
                 pokemonData = { ...customMatch, level: partyLevel };
             } else {
                 pokemonData = await fetchPokemonData(pokemonName, partyLevel, '', customMoves);
             }
+            pokemonData.id = `${pokemonName.toLowerCase()}-wild-${crypto?.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 7)}`;
             setEditingWildPokemon(pokemonData);
             setWildPokemonToAdd('');
         } catch (e) { dispatch({ type: 'SET_ERROR', payload: e.message }); }
@@ -193,80 +295,25 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
         setOpponentTeam(currentTeam => [...currentTeam, ...newPokemon]);
     };
 
-    const handleSetActivePlayerPokemon = (pokemonToActivate) => {
-        const teamForTrainer = playerTeam.filter(p => p.originalTrainerId === pokemonToActivate.originalTrainerId);
-        const otherTeams = playerTeam.filter(p => p.originalTrainerId !== pokemonToActivate.originalTrainerId);
-        const reorderedTeamForTrainer = [pokemonToActivate, ...teamForTrainer.filter(p => p.id !== pokemonToActivate.id)];
-        const finalTeam = [...otherTeams, ...reorderedTeamForTrainer];
-        finalTeam.sort((a, b) => playerTrainerIds.indexOf(a.originalTrainerId) - playerTrainerIds.indexOf(b.originalTrainerId));
-        setPlayerTeam(finalTeam);
-    };
-    const handleSetActiveOpponentPokemon = (pokemonToActivate) => {
-        // This only applies to non-wild battles where team order matters.
-        if (battleType === 'WILD') return;
-
-        // Reorder the opponentTeam array to make the selected pokemon active (at the front)
-        const reorderedTeam = [
-            pokemonToActivate,
-            ...opponentTeam.filter(p => p.id !== pokemonToActivate.id)
-        ];
-        setOpponentTeam(reorderedTeam);
-    };
     const removeUndefinedValues = (obj) => {
-        if (typeof obj !== 'object' || obj === null) {
-            return obj;
-        }
-
-        if (Array.isArray(obj)) {
-            return obj.map(removeUndefinedValues).filter(v => v !== undefined);
-        }
-
+        if (typeof obj !== 'object' || obj === null) { return obj; }
+        if (Array.isArray(obj)) { return obj.map(removeUndefinedValues).filter(v => v !== undefined); }
         const newObj = {};
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
                 const value = obj[key];
                 if (value !== undefined) {
                     const sanitizedValue = removeUndefinedValues(value);
-                    if (sanitizedValue !== undefined) {
-                        newObj[key] = sanitizedValue;
-                    }
+                    if (sanitizedValue !== undefined) { newObj[key] = sanitizedValue; }
                 }
             }
         }
         return newObj;
     };
-    const findInvalidFirestoreData = (obj, path = '') => {
-        if (obj === undefined) {
-            console.error(`INVALID DATA FOUND: Path '${path}' has an 'undefined' value.`);
-            return;
-        }
 
-        if (obj === null || typeof obj !== 'object') {
-            return; // Valid primitive, do nothing
-        }
-
-        if (obj.constructor.name !== 'Object' && obj.constructor.name !== 'Array') {
-            console.error(`INVALID DATA FOUND: Path '${path}' is a custom class or non-plain object ('${obj.constructor.name}').`);
-        }
-
-        for (const key in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                const newPath = path ? `${path}.${key}` : key;
-                const value = obj[key];
-
-                if (typeof value === 'function') {
-                    console.error(`INVALID DATA FOUND: Path '${newPath}' is a function.`);
-                } else {
-                    findInvalidFirestoreData(value, newPath);
-                }
-            }
-        }
-    };
     const addCalculatedStats = (pokemon) => {
         if (!pokemon || !pokemon.baseStats) return pokemon;
-
         const level = pokemon.level || selectedCampaign.partyLevel || selectedCampaign.defaultPermissions?.partyLevel || 50;
-
         const calculatedStats = {
             hp: calculateStat(pokemon.baseStats.hp, pokemon.level, true, pokemon.name),
             attack: calculateStat(pokemon.baseStats.attack, pokemon.level),
@@ -275,107 +322,109 @@ const BattleSetup = ({ state, dispatch, initialScenario, onLoadComplete }) => {
             'special-defense': calculateStat(pokemon.baseStats['special-defense'], pokemon.level),
             speed: calculateStat(pokemon.baseStats.speed, pokemon.level),
         };
-
-        return {
-            ...pokemon,
-            level: level,
-            stats: calculatedStats,
-            maxHp: calculatedStats.hp,
-            currentHp: calculatedStats.hp,
-            fainted: false,
-            stat_stages: pokemon.stat_stages || { attack: 0, defense: 0, 'special-attack': 0, 'special-defense': 0, speed: 0, accuracy: 0, evasion: 0 },
-            switchInEffectsResolved: false // This initializes the crucial flag
-        };
+        return { ...pokemon, level: level, stats: calculatedStats, maxHp: calculatedStats.hp, currentHp: calculatedStats.hp, fainted: false, stat_stages: pokemon.stat_stages || { attack: 0, defense: 0, 'special-attack': 0, 'special-defense': 0, speed: 0, accuracy: 0, evasion: 0 }, switchInEffectsResolved: false };
     };
-const startBattle = async () => {
-    if (!state.user?.uid) {
-        dispatch({ type: 'SET_ERROR', payload: 'User not authenticated. Please log in again.' });
-        return;
-    }
-    dispatch({ type: 'SET_LOADING', payload: 'Creating battle...' });
-    const resetPokemon = (p) => ({ ...p, currentHp: p.maxHp, fainted: false });
-    const freshPlayerTeam = playerTeam.map(addCalculatedStats);
-    let freshOpponentTeam = opponentTeam.map(addCalculatedStats);
-    if (battleType === 'BOSS' && opponentTrainer?.finalPokemon) {
-        const freshFinalPokemon = resetPokemon(scalePokemonToLevel(opponentTrainer.finalPokemon, selectedCampaign.partyLevel));
-        freshOpponentTeam = [...freshOpponentTeam, freshFinalPokemon];
-    }
-    if (freshPlayerTeam.length === 0 || freshOpponentTeam.length === 0) {
-        dispatch({ type: 'SET_ERROR', payload: 'Both teams must have Pokémon.' });
-        return;
-    }
-    const battleId = `battle-${crypto.randomUUID()}`;
-    const playerTeamId = 'players';
-    const opponentTeamId = opponentTrainer?.id || 'wild';
 
-    const battleState = {
-        id: battleId,
-        teams: [
-            { id: playerTeamId, name: selectedPlayerTrainers.map(t => t.name).join(' & '), pokemon: freshPlayerTeam, trainerIds: playerTrainerIds },
-            { id: opponentTeamId, name: opponentTrainer?.name || 'Wild Pokémon', pokemon: freshOpponentTeam }
-        ],
-        log: [{ type: 'text', text: 'A battle is starting!' }],
-        turn: 1,
-        phase: 'START_OF_BATTLE',
-        gameOver: false,
-        field: { 
-            weather: 'none', 
-            weatherTurns: 0, 
-            terrain: 'none', 
-            terrainTurns: 0, 
-            trickRoomTurns: 0, 
-            magicRoomTurns: 0, 
-            gravityTurns: 0, 
-            wonderRoomTurns: 0, 
-            hazards: { [playerTeamId]: {}, [opponentTeamId]: {} } 
-        },
-        startOfBattleAbilitiesResolved: false,
-        activePokemonIndices: {
-            [playerTeamId]: Array.from({ length: Math.min(freshPlayerTeam.length, numTrainers) }, (_, i) => i),
-            [opponentTeamId]: Array.from({ length: battleType === 'WILD' ? freshOpponentTeam.length : Math.min(freshOpponentTeam.length, numTrainers) }, (_, i) => i)
-        },
-        ownerId: state.user.uid
-    };
-    try {
-        const batch = writeBatch(db);
+    const startBattle = async () => {
+        console.log('%c[BattleSetup] startBattle called. Final fieldSettings state:', 'color: lightgreen; font-weight: bold;', fieldSettings);
+        if (!state.user?.uid) { dispatch({ type: 'SET_ERROR', payload: 'User not authenticated. Please log in again.' }); return; }
+        dispatch({ type: 'SET_LOADING', payload: 'Creating battle...' });
+        const generateSuffix = () => crypto?.randomUUID?.().slice(0, 8) || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
 
-        // 1. Set the main battle document
-        const sanitizedBattleState = removeUndefinedValues(battleState);
-        console.log('Writing battle document:', sanitizedBattleState);
-        const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
-        batch.set(battleDocRef, sanitizedBattleState);
+        // Use structuredClone to create deep copies, preventing shared object references.
+        const freshPlayerTeam = orderedPlayerTeam.map(p => addCalculatedStats(structuredClone(p)));
+        let freshOpponentTeam = finalOpponentTeam.map(p => addCalculatedStats(structuredClone(p)));
 
-        // 2. Copy trainer data
-        const allInvolvedTrainers = [...selectedPlayerTrainers];
-        if (opponentTrainer) {
-            allInvolvedTrainers.push(opponentTrainer);
+        const opponentTrainer = battleType === 'BOSS' ? selectedOpponentTrainers[0] : null;
+        if (opponentTrainer?.finalPokemon) {
+            const freshFinalPokemon = addCalculatedStats(scalePokemonToLevel(opponentTrainer.finalPokemon, selectedCampaign.partyLevel));
+            freshOpponentTeam = [...freshOpponentTeam, freshFinalPokemon];
         }
-        const uniqueTrainers = [...new Map(allInvolvedTrainers.map(t => [t.id, t])).values()];
-        uniqueTrainers.forEach(trainer => {
-            const publicTrainerRef = doc(db, `artifacts/${appId}/public/data/trainers`, trainer.id);
-            const publicTrainerData = {
-                id: trainer.id,
-                name: trainer.name
-            };
-            batch.set(publicTrainerRef, publicTrainerData);
+
+        // Validate uniqueness across all teams as a safeguard
+        const allPokemon = [...freshPlayerTeam, ...freshOpponentTeam];
+        const idSet = new Set();
+        allPokemon.forEach(p => {
+            if (idSet.has(p.id)) {
+                console.warn(`Duplicate ID detected: ${p.id}. Regenerating...`);
+                p.id = `${p.id}-dup-${generateSuffix()}`;
+            }
+            idSet.add(p.id);
         });
+        if (freshPlayerTeam.length === 0 || freshOpponentTeam.length === 0) { dispatch({ type: 'SET_ERROR', payload: 'Both teams must have Pokémon.' }); return; }
+        const battleId = `battle-${crypto.randomUUID()}`;
+        const playerTeamId = 'players';
+        const opponentTeamId = selectedOpponentTrainers.map(t => t.id).join('-') || 'wild';
+        const opponentName = selectedOpponentTrainers.map(t => t.name).join(' & ') || 'Wild Pokémon';
 
-        // 3. Commit all writes
-        await batch.commit();
 
-        const simulatorUrl = new URL(window.location.href);
-        simulatorUrl.pathname = '/simulator';
-        simulatorUrl.search = `?battleId=${battleId}`;
-        setGeneratedBattle({ id: battleId, url: simulatorUrl.href });
-    } catch (e) {
-        console.error('Firestore write failed. Starting data validation...');
-        findInvalidFirestoreData(battleState);
-        console.error('Validation complete. See any messages above for the specific path to the invalid data.', e);
-        dispatch({ type: 'SET_ERROR', payload: `Failed to create battle: ${e.message}` });
-    } finally {
-        dispatch({ type: 'SET_LOADING', payload: null });
-    }
-};
+        const battleState = {
+            id: battleId,
+            teams: [
+                { id: playerTeamId, name: selectedPlayerTrainers.map(t => t.name).join(' & '), pokemon: freshPlayerTeam, trainerIds: playerTrainerIds },
+                { id: opponentTeamId, name: opponentName, pokemon: freshOpponentTeam, trainerIds: opponentTrainerIds } // <-- trainerIds added
+            ],
+            log: [{ type: 'text', text: 'A battle is starting!' }],
+            turn: 1,
+            phase: 'START_OF_BATTLE',
+            gameOver: false,
+            field: getFormattedFieldState(playerTeamId, opponentTeamId),
+            startOfBattleAbilitiesResolved: false,
+            activePokemonIndices: (() => {
+                const playerActiveIndices = [];
+                playerTrainerIds.forEach(trainerId => {
+                    const firstPokemonForTrainer = freshPlayerTeam.find(p => p.originalTrainerId === trainerId);
+                    if (firstPokemonForTrainer) {
+                        const index = freshPlayerTeam.findIndex(p => p.id === firstPokemonForTrainer.id);
+                        if (index !== -1) playerActiveIndices.push(index);
+                    }
+                });
+
+                const opponentActiveIndices = [];
+                if (battleType === 'WILD') {
+                    freshOpponentTeam.forEach((_, index) => opponentActiveIndices.push(index));
+                } else {
+                    opponentTrainerIds.forEach(trainerId => {
+                        const firstPokemonForTrainer = freshOpponentTeam.find(p => p.originalTrainerId === trainerId);
+                        if (firstPokemonForTrainer) {
+                            const index = freshOpponentTeam.findIndex(p => p.id === firstPokemonForTrainer.id);
+                            if (index !== -1) opponentActiveIndices.push(index);
+                        }
+                    });
+                }
+
+                return {
+                    [playerTeamId]: playerActiveIndices,
+                    [opponentTeamId]: opponentActiveIndices,
+                };
+            })(),
+            ownerId: state.user.uid
+        };
+        try {
+            const batch = writeBatch(db);
+            const sanitizedBattleState = removeUndefinedValues(battleState);
+            const battleDocRef = doc(db, `artifacts/${appId}/public/data/battles`, battleId);
+            batch.set(battleDocRef, sanitizedBattleState);
+            const allInvolvedTrainers = [...selectedPlayerTrainers];
+            if (opponentTrainer) { allInvolvedTrainers.push(opponentTrainer); }
+            const uniqueTrainers = [...new Map(allInvolvedTrainers.map(t => [t.id, t])).values()];
+            uniqueTrainers.forEach(trainer => {
+                const publicTrainerRef = doc(db, `artifacts/${appId}/public/data/trainers`, trainer.id);
+                const publicTrainerData = { id: trainer.id, name: trainer.name };
+                batch.set(publicTrainerRef, publicTrainerData);
+            });
+            await batch.commit();
+            const simulatorUrl = new URL(window.location.href);
+            simulatorUrl.pathname = '/simulator';
+            simulatorUrl.search = `?battleId=${battleId}`;
+            setGeneratedBattle({ id: battleId, url: simulatorUrl.href });
+        } catch (e) {
+            console.error('Firestore write failed.', e);
+            dispatch({ type: 'SET_ERROR', payload: `Failed to create battle: ${e.message}` });
+        } finally {
+            dispatch({ type: 'SET_LOADING', payload: null });
+        }
+    };
 
     const handleSavePokemonEdit = (editedPokemon) => {
         setOpponentTeam(currentTeam => currentTeam.map(p => p.id === editedPokemon.id ? editedPokemon : p));
@@ -383,35 +432,11 @@ const startBattle = async () => {
     };
 
     const copyToClipboard = (text) => { navigator.clipboard.writeText(text); };
-
-    // NEW: Wizard navigation handlers
     const handleNext = () => setCurrentStep(prev => prev + 1);
     const handleBack = () => setCurrentStep(prev => prev - 1);
 
-    if (!selectedCampaign) {
-        return (
-            <div className="flex items-center justify-center p-8 bg-gray-800 rounded-lg" style={{ minHeight: '20rem' }}>
-                <h2 className="text-2xl font-semibold text-gray-400">Loading Campaign Data...</h2>
-            </div>
-        )
-    }
-
-    if (generatedBattle) {
-        return (
-            <div className="p-8 text-center bg-gray-800 rounded-lg max-w-lg mx-auto">
-                <h2 className="text-2xl font-bold text-green-400 mb-4">Battle Created!</h2>
-                <p className="text-gray-300 mb-2">Your battle has been saved. Use the link below to start the simulation.</p>
-                <div className="bg-gray-900 p-4 rounded-lg my-4 flex items-center justify-between">
-                    <code className="text-white text-lg select-all">{generatedBattle.id}</code>
-                    <button onClick={() => copyToClipboard(generatedBattle.id)} className="bg-indigo-600 text-sm px-3 py-1 rounded">Copy</button>
-                </div>
-                <a href={generatedBattle.url} target="_blank" rel="noopener noreferrer" className="block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-md transition">
-                    Open Battle Simulator
-                </a>
-                <button onClick={() => setGeneratedBattle(null)} className="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-md transition">Create Another Battle</button>
-            </div>
-        )
-    }
+    if (!selectedCampaign) { return <div className="flex items-center justify-center p-8 bg-gray-800 rounded-lg" style={{ minHeight: '20rem' }}><h2 className="text-2xl font-semibold text-gray-400">Loading Campaign Data...</h2></div> }
+    if (generatedBattle) { return (<div className="p-8 text-center bg-gray-800 rounded-lg max-w-lg mx-auto"> <h2 className="text-2xl font-bold text-green-400 mb-4">Battle Created!</h2> <p className="text-gray-300 mb-2">Your battle has been saved. Use the link below to start the simulation.</p> <div className="bg-gray-900 p-4 rounded-lg my-4 flex items-center justify-between"> <code className="text-white text-lg select-all">{generatedBattle.id}</code> <button onClick={() => copyToClipboard(generatedBattle.id)} className="bg-indigo-600 text-sm px-3 py-1 rounded">Copy</button> </div> <a href={generatedBattle.url} target="_blank" rel="noopener noreferrer" className="block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-md transition"> Open Battle Simulator </a> <button onClick={() => setGeneratedBattle(null)} className="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-md transition">Create Another Battle</button> </div>) }
 
     return (
         <div className="p-4 md:p-8 max-w-4xl mx-auto relative">
@@ -420,136 +445,84 @@ const startBattle = async () => {
             {editingWildPokemon && <PokemonEditorModal pokemon={editingWildPokemon} onSave={handleAddBulkWildPokemon} onClose={() => setEditingWildPokemon(null)} dispatch={dispatch} itemList={itemList} isWildEditor={true} />}
 
             <h1 className="text-4xl font-bold text-indigo-400 mb-6 text-center">Battle Setup</h1>
-            <div className="absolute top-4 left-4 md:top-8 md:left-8">
-                <button
-                    onClick={() => dispatch({ type: 'SET_VIEW', payload: 'TRAINERS' })}
-                    className="flex items-center gap-2 text-indigo-400 hover:text-indigo-200 font-semibold transition-colors"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                        <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z" clipRule="evenodd" />
-                    </svg>
-                    Back to Manager
-                </button>
-            </div>
+            <div className="absolute top-4 left-4 md:top-8 md:left-8"> <button onClick={() => dispatch({ type: 'SET_VIEW', payload: 'TRAINERS' })} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-200 font-semibold transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"> <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z" clipRule="evenodd" /> </svg> Back to Manager </button> </div>
 
             <Stepper currentStep={currentStep} setStep={setCurrentStep} />
 
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg space-y-6 min-h-[30rem]">
-                {/* --- STEP 1: SETTINGS --- */}
                 {currentStep === 1 && (
-                    <div>
-                        <h2 className="text-2xl font-semibold mb-4 text-indigo-300">Encounter Settings</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                            <div><label className="block text-sm font-medium mb-1 text-gray-400">Battle Type</label><select value={battleType} onChange={e => setBattleType(e.target.value)} className="bg-gray-700 p-2 rounded-md w-full"><option value="TRAINER">Party vs Trainer</option><option value="WILD">Party vs Wild</option><option value="BOSS">Party vs Boss</option></select></div>
-                            <div><label className="block text-sm font-medium mb-1 text-gray-400">Player Trainers</label><select value={numTrainers} onChange={e => setNumTrainers(Number(e.target.value))} disabled={battleType === 'BOSS'} className="bg-gray-700 p-2 rounded-md w-full disabled:bg-gray-600">{[1, 2, 3, 4, 5, 6].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
-                            <div><label className="block text-sm font-medium mb-1 text-gray-400">Pokémon per Trainer</label><select value={pokemonPerTrainer} onChange={e => setPokemonPerTrainer(Number(e.target.value))} disabled={battleType === 'BOSS'} className="bg-gray-700 p-2 rounded-md w-full disabled:bg-gray-600">{[1, 2, 3, 4, 5, 6].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
-                        </div>
-                    </div>
+                    <Step1_Settings
+                        battleType={battleType}
+                        setBattleType={setBattleType}
+                        numTrainers={numTrainers}
+                        setNumTrainers={setNumTrainers}
+                        pokemonPerTrainer={pokemonPerTrainer}
+                        setPokemonPerTrainer={setPokemonPerTrainer}
+                        numOpponentTrainers={numOpponentTrainers}      // Pass new prop
+                        setNumOpponentTrainers={setNumOpponentTrainers} // Pass new prop
+                        fieldSettings={fieldSettings}
+                        onFieldSettingChange={handleFieldSettingChange}
+                        onHazardChange={onHazardChange}
+                    />
                 )}
-
-                {/* --- STEP 2: PLAYER TEAM --- */}
                 {currentStep === 2 && (
-                    <div>
-                        <h2 className="text-2xl font-semibold text-indigo-300">Player Team Selection</h2>
-                        <div className="my-4"><p className="mb-2 text-sm text-gray-400">1. Select {numTrainers} Party Member(s):</p><div className="flex flex-wrap gap-2">{partyMembers.map(t => (<button key={t.id} onClick={() => togglePlayerTrainerSelection(t.id)} className={`p-2 rounded-md text-sm ${playerTrainerIds.includes(t.id) ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>{t.name}</button>))}</div></div>
-                        {playerTrainerIds.length > 0 && <div className="space-y-4"><p className="mb-2 text-sm text-gray-400">2. Select up to {pokemonPerTrainer} Pokémon per trainer:</p><div className="space-y-3 max-h-80 overflow-y-auto pr-2">{selectedPlayerTrainers.map(trainer => (<div key={trainer.id}><h4 className="font-bold text-indigo-300">{trainer.name}'s Roster</h4><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-1">{trainer.roster.map(p => (<PokemonCard key={p.id} pokemon={{ ...p, originalTrainerId: trainer.id }} onSelect={() => togglePlayerPokemonSelection({ ...p, originalTrainerId: trainer.id, originalTrainer: trainer.name })} isSelected={playerTeam.some(sel => sel.id === p.id)} />))}</div></div>))}</div></div>}
-                    </div>
+                    <Step2_PlayerTeam
+                        // (No changes to props here)
+                        partyMembers={partyMembers}
+                        numTrainers={numTrainers}
+                        pokemonPerTrainer={pokemonPerTrainer}
+                        playerTrainerIds={playerTrainerIds}
+                        playerTeam={playerTeam}
+                        togglePlayerTrainerSelection={togglePlayerTrainerSelection}
+                        togglePlayerPokemonSelection={togglePlayerPokemonSelection}
+                        selectedPlayerTrainers={selectedPlayerTrainers}
+                    />
                 )}
-
-                {/* --- STEP 3: OPPONENT TEAM --- */}
                 {currentStep === 3 && (
-                    <div>
-                        <h2 className="text-2xl font-semibold text-indigo-300">Opponent Team Selection</h2>
-                        <div className="my-4">
-                            {battleType === 'WILD' ? (
-                                <div><p className="mb-2 text-sm text-gray-400">Add Wild Pokémon:</p><AutocompleteInput value={wildPokemonToAdd} onChange={setWildPokemonToAdd} onSelect={handleWildPokemonSelect} placeholder="Search to add & edit wild Pokémon..." sourceList={combinedPokemonList} /></div>
-                            ) : (
-                                <div><p className="mb-2 text-sm text-gray-400">1. Select Opponent Trainer:</p><select value={opponentTrainerId} onChange={e => { setOpponentTrainerId(e.target.value); setOpponentTeam([]); }} className="w-full bg-gray-700 p-2 rounded-md mb-4"><option value="">Select Opponent</option>{opponents.filter(t => battleType === 'BOSS' ? t.category === 'bosses' : true).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-                                    {opponentTrainer && <div><p className="mb-2 text-sm text-gray-400">2. Select up to {MAX_PARTY_SIZE} Pokémon for the battle:</p><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-80 overflow-y-auto pr-2">{opponentTrainer.roster.map(p => (<PokemonCard key={p.id} pokemon={p} onSelect={() => toggleOpponentPokemonSelection(p)} isSelected={opponentTeam.some(sel => sel.id === p.id)} />))}</div></div>}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <Step3_OpponentTeam
+                        // (Props are updated for the new component)
+                        battleType={battleType}
+                        wildPokemonToAdd={wildPokemonToAdd}
+                        setWildPokemonToAdd={setWildPokemonToAdd}
+                        handleWildPokemonSelect={handleWildPokemonSelect}
+                        combinedPokemonList={combinedPokemonList}
+                        numOpponentTrainers={numOpponentTrainers}
+                        opponents={opponents}
+                        toggleOpponentTrainerSelection={toggleOpponentTrainerSelection}
+                        opponentTrainerIds={opponentTrainerIds}
+                        selectedOpponentTrainers={selectedOpponentTrainers}
+                        toggleOpponentPokemonSelection={toggleOpponentPokemonSelection}
+                        opponentTeam={opponentTeam}
+                    />
                 )}
-
-                {/* --- STEP 4: REVIEW & LAUNCH --- */}
                 {currentStep === 4 && (
-                    <div>
-                        <h2 className="text-2xl font-semibold text-indigo-300 mb-4">Review & Launch</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Player Team Review */}
-                            <div>
-                                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">Player Team <span className="text-gray-400">({playerTeam.length})</span>
-                                    {playerTeam.length > 0 ? <span className="text-green-400 text-sm font-bold">✓ READY</span> : <span className="text-red-400 text-sm font-bold">✗ INCOMPLETE</span>}
-                                </h3>
-                                <div className="space-y-3 p-2 bg-gray-900/50 rounded-lg max-h-96 overflow-y-auto">{selectedPlayerTrainers.map(trainer => {
-                                    const teamForTrainer = playerTeam.filter(p => p.originalTrainerId === trainer.id);
-                                    if (teamForTrainer.length === 0) return null;
-                                    return (<div key={trainer.id}><h4 className="font-bold text-indigo-300">{trainer.name}</h4><div className="grid grid-cols-2 gap-2 mt-1">{teamForTrainer.map((p, i) => (<TeamPreviewCard key={p.id} pokemon={p} onSelect={() => handleSetActivePlayerPokemon(p)} isActive={i === 0} />))}</div></div>)
-                                })}</div>
-                            </div>
-                            {/* Opponent Team Review */}
-                            <div>
-                                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">Opponent Team <span className="text-gray-400">({opponentTeam.length})</span>
-                                    {opponentTeam.length > 0 ? <span className="text-green-400 text-sm font-bold">✓ READY</span> : <span className="text-red-400 text-sm font-bold">✗ INCOMPLETE</span>}
-                                </h3>
-                                <div className="p-2 bg-gray-900/50 rounded-lg max-h-96 overflow-y-auto">
-                                    <div className="grid grid-cols-2 gap-2">{opponentTeam.map((p, i) => {
-                                        // First, determine how many opponents will be active
-                                        const opponentActiveCount = battleType === 'WILD'
-                                            ? opponentTeam.length
-                                            : Math.min(opponentTeam.length, numTrainers);
-
-                                        return (
-                                            <TeamPreviewCard
-                                                key={p.id}
-                                                pokemon={p}
-                                                // For wild battles, clicking edits the Pokémon. Otherwise, it sets the active one.
-                                                onSelect={() => battleType === 'WILD' ? setEditingPokemon(p) : handleSetActiveOpponentPokemon(p)}
-                                                // A Pokémon is active if its position in the array is less than the active count.
-                                                isActive={i < opponentActiveCount}
-                                            />
-                                        );
-                                    })}</div>
-                                    {battleType === 'BOSS' && opponentTrainer?.finalPokemon && <div className="mt-2"><h4 className="text-lg font-semibold text-red-400">Final Pokémon:</h4><div className="grid grid-cols-2 gap-2"><TeamPreviewCard pokemon={opponentTrainer.finalPokemon} onSelect={() => { }} isActive={false} /></div></div>}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <Step4_Review
+                        // (Props are updated for the new logic)
+                        playerTeam={orderedPlayerTeam}
+                        selectedPlayerTrainers={selectedPlayerTrainers}
+                        opponentTeam={finalOpponentTeam}
+                        battleType={battleType}
+                        numTrainers={numTrainers}
+                        setEditingPokemon={setEditingPokemon}
+                        selectedOpponentTrainers={selectedOpponentTrainers}
+                        numOpponentTrainers={numOpponentTrainers}
+                    />
                 )}
             </div>
 
             {/* --- WIZARD NAVIGATION --- */}
             <div className="text-center mt-8 flex justify-between items-center gap-4">
-                {/* Back Button */}
-                <div>
-                    {currentStep > 1 && (
-                        <button onClick={handleBack} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-md transition">
-                            Back
-                        </button>
-                    )}
-                </div>
-
-                {/* Final Action Buttons (Step 4) */}
+                <div> {currentStep > 1 && (<button onClick={handleBack} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-md transition"> Back </button>)} </div>
                 {currentStep === 4 ? (
                     <div className="flex gap-4">
-                        <button onClick={() => setIsSaveModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed" disabled={playerTeam.length === 0 || opponentTeam.length === 0}>
-                            Save Scenario
-                        </button>
-                        <button onClick={startBattle} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed" disabled={playerTeam.length === 0 || opponentTeam.length === 0}>
-                            Start Battle
-                        </button>
+                        {/* MODIFIED: Use ordered teams for validation */}
+                        <button onClick={() => setIsSaveModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed" disabled={orderedPlayerTeam.length === 0 || finalOpponentTeam.length === 0}> Save Scenario </button>
+                        <button onClick={startBattle} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed" disabled={orderedPlayerTeam.length === 0 || finalOpponentTeam.length === 0}> Start Battle </button>
                     </div>
                 ) : (
-                    // Next Button (Steps 1-3)
                     <div>
-                        <button
-                            onClick={handleNext}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed"
-                            disabled={(currentStep === 2 && playerTeam.length === 0) || (currentStep === 3 && opponentTeam.length === 0)}
-                        >
-                            Next
-                        </button>
+                        {/* MODIFIED: Use ordered teams for validation */}
+                        <button onClick={handleNext} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-md transition disabled:bg-gray-600 disabled:cursor-not-allowed" disabled={(currentStep === 2 && orderedPlayerTeam.length === 0) || (currentStep === 3 && finalOpponentTeam.length === 0)}> Next </button>
                     </div>
                 )}
             </div>

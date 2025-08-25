@@ -388,7 +388,6 @@ export const POKEBALLS = [
 ];
 export const WEATHER_TYPES = ['none', 'sunshine', 'rain', 'sandstorm', 'snow', 'heavy-rain', 'harsh-sunshine', 'strong-winds'];
 export const TERRAIN_TYPES = ['none', 'electric-terrain', 'grassy-terrain', 'misty-terrain', 'psychic-terrain'];
-
 export const ENTRY_HAZARDS = ['Stealth Rock', 'Spikes', 'Toxic Spikes', 'Sticky Web'];
 
 export const STAGE_MULTIPLIERS = {
@@ -414,3 +413,18 @@ export const UNMISSABLE_MOVES = new Set([
 ]);
 
 export const DELAYED_DAMAGE_MOVES = new Set(['future-sight', 'doom-desire']);
+
+export const OHKO_MOVES = new Set(['fissure', 'guillotine', 'horn-drill', 'sheer-cold']);
+
+// A list of moves that Anticipation treats as Normal-type, regardless of their actual type.
+export const ANTICIPATION_NORMAL_TYPE_MOVES = new Set([
+    'judgment', 'weather-ball', 'natural-gift', 'revelation-dance', 'multi-attack', 'techno-blast'
+]);
+export const SWITCHING_MOVES = new Set(['u-turn', 'volt-switch', 'baton-pass', 'flip-turn', 'parting-shot', 'teleport']);
+export const PHASING_MOVES = new Set(['dragon-tail', 'circle-throw']);
+
+export const ARMOR_TAIL_IGNORED_TARGETS = new Set([
+    'all-other-pokemon', 
+    'all-opponents', 
+    'opponents-field'
+]);

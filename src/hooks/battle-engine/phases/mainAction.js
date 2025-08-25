@@ -102,7 +102,7 @@ export const runMainActionPhase = (currentBattleState, sortedActions, redirectio
             if (actor.transformed && actor.baseForm) {
                 revertFormChange(actor, newLog);
             }
-            if (trainer) {
+            if (trainer && trainer.roster) {
                 const originalPokemonData = trainer.roster.find(p => p.id === actor.id);
                 if (originalPokemonData) actor.types = [...originalPokemonData.types];
             }
@@ -127,6 +127,7 @@ export const runMainActionPhase = (currentBattleState, sortedActions, redirectio
                 }
                 const newPokemon = actorTeam.pokemon[newPokemonGlobalIndex];
                 if (newPokemon) {
+                    newPokemon.justSwitchedIn = true;
                     newPokemon.switchInEffectsResolved = false;
                     redirectionMap.set(actor.id, newPokemon.id);
                     newLog.push({ type: 'text', text: `${trainerName} sends out ${newPokemon.name}!` });

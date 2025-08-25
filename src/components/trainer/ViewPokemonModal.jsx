@@ -26,9 +26,14 @@ const ViewPokemonModal = ({ pokemon, onClose }) => {
                     <div className="flex-shrink-0 text-center">
                         <img src={getSprite(pokemon)} alt={pokemon.name} className="w-32 h-32 bg-gray-700/50 rounded-md mx-auto" />
                         <div className="flex flex-wrap justify-center gap-2 mt-2">
-                            {pokemon.types?.map(type => 
-                                <span key={type} className={`px-2 py-1 text-sm rounded-full uppercase font-bold ${TYPE_COLORS[type]}`}>{type}</span>
-                            )}
+                            {pokemon.types?.map((type, index) => {
+                                const typeName = (typeof type === 'object' && type !== null) ? type.name : type;
+                                return (
+                                    <span key={`${typeName}-${index}`} className={`px-2 py-1 text-sm rounded-full uppercase font-bold ${TYPE_COLORS[typeName]}`}>
+                                        {typeName}
+                                    </span>
+                                );
+                            })}
                         </div>
                     </div>
                     <div className="flex-grow space-y-3">

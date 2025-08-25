@@ -1,4 +1,4 @@
-import { resolveChance, getEffectiveAbility } from '../battleUtils';
+import { resolveChance, canSwitchOut, getEffectiveAbility, checkMoveBlockingAbilities } from '../battleUtils';
 import { calculateDamage } from '../damageCalculator';
 import { calculateStatChange } from '../stateModifiers';
 import {
@@ -9,7 +9,7 @@ import {
     INFATUATION_MOVE, ABILITY_SUPPRESSING_MOVES, ABILITY_REPLACEMENT_MOVES, TWO_TURN_MOVES,
     REFLECTABLE_MOVES, BINDING_MOVES, LEECH_SEED_MOVE, CONFUSION_INDUCING_MOVES, PROTECTIVE_MOVES,
     DELAYED_DAMAGE_MOVES, EXPLOSIVE_MOVES, HEALING_MOVES, DISABLE_INDUCING_MOVES, TORMENT_INDUCING_MOVES,
-    HEAL_BLOCK_INDUCING_MOVES, AQUA_RING_MOVE, INGRAIN_MOVE
+    HEAL_BLOCK_INDUCING_MOVES, AQUA_RING_MOVE, INGRAIN_MOVE, SWITCHING_MOVES, PHASING_MOVES, ARMOR_TAIL_IGNORED_TARGETS
 } from '../../../config/gameData';
 import { abilityEffects } from '../abilityEffects';
 import { itemEffects } from '../itemEffects';
@@ -83,7 +83,6 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
     const actor = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.pokemon.id);
     let move = { ...actor.moves.find(m => m.id === action.move.id) };
     if (!move.id) return;
-
     // Apply any redirections from switches that happened earlier in the turn.
     action.targetIds = action.targetIds.map(id => redirectionMap.get(id) || id);
     action.hits = action.hits.map(hit => ({
@@ -412,7 +411,6 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
     for (const [i, hit] of action.hits.entries()) {
         let originalTarget = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === hit.targetId);
 
-        // Skip this iteration if the target is invalid (e.g., already fainted from a previous hit)
         if (!originalTarget || originalTarget.fainted) continue;
 
         // Determine the final target for THIS HIT after redirection
@@ -422,7 +420,11 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
             newLog.push({ type: 'text', text: `${redirector.name} took the attack!` });
         }
 
-        // Run all checks and effects for the finalTarget of this specific hit
+        const protector = checkMoveBlockingAbilities(action, actor, currentBattleState);
+        if (protector) {
+            newLog.push({ type: 'text', text: `${actor.name}'s move was blocked by ${protector.name}'s ${protector.ability.name}!` });
+            return;
+        }
         if (checkProtection(finalTarget, move, allQueuedActions, newLog)) continue;
 
         const targetAbilityId = getEffectiveAbility(finalTarget, currentBattleState)?.id;
@@ -453,7 +455,7 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
             const finalTargetItemId = finalTarget.heldItem?.id;
 
             if (abilityEffects[finalTargetAbilityId]?.onTakeDamage) {
-                damage = abilityEffects[finalTargetAbilityId].onTakeDamage(damage, finalTarget, move, currentBattleState, newLog, actorAbilityId);
+                damage = abilityEffects[finalTargetAbilityId].onTakeDamage(damage, finalTarget, move, currentBattleState, newLog, actorAbilityId, damageResult.isCritical);
             }
             if (itemEffects[finalTargetItemId]?.onTakeDamage) {
                 damage = itemEffects[finalTargetItemId].onTakeDamage(damage, finalTarget, move, currentBattleState, newLog);
@@ -488,11 +490,61 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
             if (finalTarget.currentHp === 0) {
                 finalTarget.fainted = true;
                 attackEntry.fainted = true;
+
+                // --- ADD THIS BLOCK ---
+                // Check for abilities that trigger upon fainting
+                const finalTargetAbilityId = getEffectiveAbility(finalTarget, currentBattleState)?.id;
+                if (abilityEffects[finalTargetAbilityId]?.onFaint) {
+                    const moveMadeContact = CONTACT_MOVES.has(move.id);
+                    abilityEffects[finalTargetAbilityId].onFaint(finalTarget, actor, moveMadeContact, currentBattleState, newLog);
+                }
+                // --- END ADDITION ---
+
                 if (abilityEffects[actorAbilityId]?.onAfterKO) {
                     abilityEffects[actorAbilityId].onAfterKO(actor, finalTarget, newLog, statChanger, currentBattleState);
                 }
             }
+            if (PHASING_MOVES.has(move.id) && !finalTarget.fainted) {
+                let isImmune = false;
+                // Check for immunity from abilities like Suction Cups
+                if (abilityEffects[finalTargetAbilityId]?.onPreventForceSwitch) {
+                    isImmune = abilityEffects[finalTargetAbilityId].onPreventForceSwitch(finalTarget, newLog);
+                }
+                // Check for immunity from statuses like Ingrain
+                if (finalTarget.volatileStatuses.includes('Ingrain')) {
+                    newLog.push({ type: 'text', text: `${finalTarget.name} is anchored by its roots!` });
+                    isImmune = true;
+                }
 
+                if (!isImmune) {
+                    const targetTeam = currentBattleState.teams.find(t => t.pokemon.some(p => p.id === finalTarget.id));
+                    const targetTeamKey = targetTeam.id;
+                    const targetActiveIndices = currentBattleState.activePokemonIndices[targetTeamKey];
+
+                    // Find eligible replacements on the target's bench
+                    const eligibleReplacements = targetTeam.pokemon.filter((p, i) =>
+                        p && !p.fainted && !targetActiveIndices.includes(i)
+                    );
+
+                    if (eligibleReplacements.length > 0) {
+                        // Pick a random replacement
+                        const replacement = eligibleReplacements[Math.floor(Math.random() * eligibleReplacements.length)];
+
+                        // Find the target's current slot on the field
+                        const targetSlotIndex = targetActiveIndices.findIndex(globalIndex => targetTeam.pokemon[globalIndex].id === finalTarget.id);
+
+                        // Queue the forced switch
+                        currentBattleState.forcedSwitchQueue.push({
+                            teamId: targetTeam.id,
+                            teamKey: targetTeamKey,
+                            slotIndex: targetSlotIndex,
+                            pokemonToSwitchOutId: finalTarget.id,
+                            replacementId: replacement.id,
+                        });
+                        newLog.push({ type: 'text', text: `${finalTarget.name} was dragged out!` });
+                    }
+                }
+            }
             // Handle secondary effects (only on the first hit for multi-hit moves)
             if (i === 0 && !finalTarget.fainted) {
                 // -- Trapping status --
@@ -621,9 +673,14 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
 
                 // Apply Stat Changes
                 if (move.stat_changes?.length > 0 && !damageResult.move.sheerForceBoosted) {
+                    const statChangeChance = move.meta?.stat_chance || 0;
                     const dmFlagKey = `willApplyStatChange_${move.id}_on_${finalTarget.id}`;
-                    if (currentBattleState.dm?.[dmFlagKey] && finalTarget.heldItem?.id !== 'covert-cloak') {
-                        // ... (rest of stat change logic)
+                    if (resolveChance(statChangeChance, dmFlagKey, currentBattleState) && finalTarget.heldItem?.id !== 'covert-cloak') {
+                        move.stat_changes.forEach(sc => {
+                            const { updatedTarget, newLog: statLog } = calculateStatChange(finalTarget, sc.stat.name, sc.change, currentBattleState);
+                            Object.assign(finalTarget, updatedTarget);
+                            newLog.push(...statLog);
+                        });
                     }
                 }
 
@@ -671,7 +728,32 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
             actor.currentHp = Math.min(actor.maxHp, actor.currentHp + healAmount);
             newLog.push({ type: 'text', text: `${actor.name} drained health!` });
         }
+        if (SWITCHING_MOVES.has(move.id)) {
+            // Baton Pass is a special exception that always bypasses trapping.
+            const canBypassTrapping = move.id === 'baton-pass';
 
+            // Check if the Pokémon is actually able to switch out.
+            if (canBypassTrapping || canSwitchOut(actor, currentBattleState)) {
+                // If the Pokémon can switch, proceed with the normal queueing logic.
+                if (move.damage_class.name !== 'status') {
+                    newLog.push({ type: 'text', text: `${actor.name} went back to its Trainer!` });
+                }
+
+                const actorTeamIndex = currentBattleState.teams.findIndex(t => t.pokemon.some(p => p.id === actor.id));
+                const actorTeam = currentBattleState.teams[actorTeamIndex];
+                const actorSlotIndex = currentBattleState.activePokemonIndices[actorTeam.id].findIndex(i => actorTeam.pokemon[i]?.id === actor.id);
+
+                currentBattleState.voluntarySwitchQueue.push({
+                    teamId: actorTeam.id,
+                    teamIndex: actorTeamIndex,
+                    slotIndex: actorSlotIndex,
+                    originalTrainerId: actor.originalTrainerId
+                });
+            } else {
+                // If the Pokémon is trapped, the switch part of the move fails.
+                newLog.push({ type: 'text', text: `${actor.name} is trapped and cannot switch out!` });
+            }
+        }
         const selfStatChanges = SELF_STAT_LOWERING_MOVES.get(move.id);
         if (selfStatChanges) {
             let statsWereLowered = false;
@@ -691,7 +773,16 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
                 }
             }
         }
-
+        if (move.id === 'magnet-rise') {
+            if (actor.volatileStatuses.some(s => (s.name || s) === 'Magnet Rise')) {
+                newLog.push({ type: 'text', text: 'But it failed!' });
+            } else {
+                // Add the volatile status with a 5-turn duration
+                actor.volatileStatuses.push({ name: 'Magnet Rise', turnsLeft: 5 });
+                newLog.push({ type: 'text', text: `${actor.name} levitated with electromagnetism!` });
+            }
+            return; // End the action
+        }
         // The logic for Outrage/Thrash etc.
         if (CONSECUTIVE_TURN_MOVES.has(move.id) && !actor.lockedMove) {
             actor.lockedMove = { id: move.id, turns: 2 + Math.floor(Math.random() * 2) };

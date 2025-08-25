@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { TYPE_COLORS, HIGH_CRIT_RATE_MOVES, CRIT_CHANCE_PERCENTAGES, PROTECTIVE_MOVES, MULTI_HIT_MOVES } from '../../config/gameData';
 import { FORM_CHANGE_METHOD } from '../../config/constants';
 import { calculateCritStage, calculateHitChance } from '../../utils/api';
+import { canSwitchOut } from '../../hooks/battle-engine/battleUtils';
 
 const ActionControlPanel = ({ pokemon, battleState, allTrainers, queuedAction, onActionReady, onCancelAction, onEnterTargetingMode }) => {
     const [view, setView] = useState('FIGHT');
@@ -28,8 +29,11 @@ useEffect(() => {
     setView('FIGHT');
     setShowTransformChoice(false);
     setLocalAction(null);
+}, [pokemon.id]); // NOTE: The dependency is ONLY pokemon.id
 
-    // FIX: Only run targeting logic if a move is locked AND an action isn't already queued.
+// Effect 2: This specifically handles the logic for auto-selecting a locked move.
+useEffect(() => {
+    // Only run targeting logic if a move is locked AND an action isn't already queued.
     if (pokemon.lockedMove?.id && !queuedAction) {
         const move = pokemon.moves.find(m => m.id === pokemon.lockedMove.id);
         const moveHitData = MULTI_HIT_MOVES.get(move?.id);
@@ -52,7 +56,6 @@ useEffect(() => {
             }
         }
     }
-    // Add queuedAction to the dependency array
 }, [pokemon.id, pokemon.lockedMove, pokemon.moves, onEnterTargetingMode, queuedAction]);
 
     const onUpdateAction = (action) => {
@@ -156,7 +159,8 @@ useEffect(() => {
         !p.fainted &&
         p.originalTrainerId === pokemon.originalTrainerId
     );
-    const isTrapped = pokemon.volatileStatuses?.some(s => s.name === 'Trapped') && pokemon.heldItem?.id !== 'shed-shell';
+    const isTrappedByMove = pokemon.volatileStatuses?.some(s => s.name === 'Trapped') && pokemon.heldItem?.id !== 'shed-shell';
+    const isTrapped = isTrappedByMove || !canSwitchOut(pokemon, battleState);
 
     const renderContent = () => {
         if (pokemon.lockedMove?.id) {
@@ -192,9 +196,21 @@ useEffect(() => {
             return (
                 <div className="h-full flex flex-col items-center justify-center text-center p-4">
                     <h3 className="text-2xl font-bold text-green-400">Action Confirmed!</h3>
-                    <p className="text-lg capitalize">
-                        {pokemon.name} will use <span className="font-semibold">{queuedAction.move.name}</span>.
-                    </p>
+                    {queuedAction.type === 'FIGHT' && queuedAction.move && (
+                        <p className="text-lg capitalize">
+                            {pokemon.name} will use <span className="font-semibold">{queuedAction.move.name}</span>.
+                        </p>
+                    )}
+                    {queuedAction.type === 'SWITCH' && (
+                        <p className="text-lg capitalize">
+                            {pokemon.name} will switch out.
+                        </p>
+                    )}
+                    {queuedAction.type === 'ITEM' && (
+                        <p className="text-lg capitalize">
+                            {pokemon.name} will use an item.
+                        </p>
+                    )}
                     <button onClick={onCancelAction} className="mt-4 bg-red-600 hover:bg-red-700 px-4 py-2 rounded">
                         Cancel Action
                     </button>

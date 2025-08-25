@@ -2,7 +2,7 @@
 import { calculateDamage } from './damageCalculator';
 import { calculateHitChance, calculateCritStage } from '../../utils/api';
 import { CRIT_CHANCE_PERCENTAGES, HIGH_CRIT_RATE_MOVES, UNMISSABLE_MOVES, API_AILMENT_TO_STATUS_MAP } from '../../config/gameData';
-import { getEffectiveAbility, calculateTurnOrderSpeed } from './battleUtils';
+import { getEffectiveAbility, calculateTurnOrderSpeed, checkMoveBlockingAbilities } from './battleUtils';
 import { runPreMoveChecks } from './preMoveChecks';
 import { getContactAbilities, getEffectChances, getEndOfTurnChances, getTurnOrderChances } from './chanceGatherers';
 
@@ -57,17 +57,25 @@ export const calculateTurnPreview = (baseBattleState, queuedActions, dmOverrides
             const move = action.move;
             const attacker = baseBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.pokemon.id);
             const actionData = { id: action.pokemon.id, attacker, move, resolutionType: 'SINGLE', targetResolutions: [] };
-            
+            const protector = checkMoveBlockingAbilities(action, actorInSim, stateCopy);
             const targetsInSim = action.targetIds.map(id => allActivePokemonInCopy.find(p => p.id === id)).filter(Boolean);
             targetsInSim.forEach(targetInSim => {
                 const target = baseBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === targetInSim.id);
+                let expectedDamage = 0;
+                let resolutionText = '';
                 const isCritical = !!dmOverrides[`isCritical_${move.id}_hit1_on_${targetInSim.id}`];
-                const { damage: expectedDamage } = calculateDamage(actorInSim, targetInSim, move, isCritical, stateCopy, []);
+                if (protector) {
+                    expectedDamage = 0;
+                    resolutionText = `(Blocked by ${protector.name}!)`;
+                } else {
+                    const { damage } = calculateDamage(actorInSim, targetInSim, move, isCritical, stateCopy, []);
+                    expectedDamage = damage;
+                }
                 const hitChance = calculateHitChance(attacker, target, move, baseBattleState);
                 const showHitToggle = !UNMISSABLE_MOVES.has(move.id) && move.accuracy !== null;
                 const hitKey = `willHit_${move.id}_hit1_on_${target.id}`;
                 const willHit = dmOverrides[hitKey];
-                
+
                 let chances = [];
                 if (canMove && showHitToggle) {
                     const isStatusMove = move.damage_class.name === 'status' && move.meta?.category?.name === 'ailment';
@@ -91,7 +99,7 @@ export const calculateTurnPreview = (baseBattleState, queuedActions, dmOverrides
                 actionData.targetResolutions.push({ target, expectedDamage, chances });
             });
             preCalculatedData.moveActions.push(actionData);
-            
+
             if (dmOverrides[`willHit_${move.id}_hit1_on_${targetsInSim[0]?.id}`]) {
                 if (move.damage_class.name === 'status' && move.meta?.category?.name === 'ailment') {
                     const statusToApply = API_AILMENT_TO_STATUS_MAP[move.meta.ailment.name];
@@ -110,6 +118,6 @@ export const calculateTurnPreview = (baseBattleState, queuedActions, dmOverrides
     for (const pokemon of allActivePokemonInCopy) {
         getEndOfTurnChances(pokemon, stateCopy, preCalculatedData.chanceEvents);
     }
-    
+
     return { sortedActions, preCalculatedData };
 };

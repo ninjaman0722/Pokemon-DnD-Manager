@@ -18,6 +18,8 @@ const MasterControlPanel = ({
     onTurnChange,
     onFieldChange,
     onHazardChange,
+    playerTeamId,   // <-- New Prop
+    opponentTeamId,  // <-- New Prop
     targetingInfo
 }) => {
     const handleFieldUpdate = (key, value) => {
@@ -44,6 +46,11 @@ const MasterControlPanel = ({
         onHazardChange(side, key, newLayers);
     };
 
+    const sides = [
+        { id: playerTeamId, name: 'Player' },
+        { id: opponentTeamId, name: 'Opponent' }
+    ].filter(side => side.id);
+
     return (
         <div className="bg-gray-900 rounded-lg p-4 flex flex-col gap-2 h-full">
             <div className="flex justify-between items-center border-b border-gray-700 pb-2 mb-2 flex-shrink-0">
@@ -64,19 +71,24 @@ const MasterControlPanel = ({
             <div className="flex-shrink-0 space-y-2 text-sm">
                 <div className="p-2 border border-gray-700 rounded-lg space-y-2">
                     <h4 className="text-xs font-bold text-center text-gray-400">ENTRY HAZARDS</h4>
-                    {['players', 'opponent'].map(side => (
-                        <div key={side} className="grid grid-cols-2 gap-x-2">
-                            <span className="font-semibold capitalize text-indigo-300">{side}' Side:</span>
+                    {sides.map(sideInfo => (
+                        <div key={sideInfo.id} className="grid grid-cols-2 gap-x-2">
+                            <span className="font-semibold capitalize text-indigo-300">{sideInfo.name}'s Side:</span>
                             <div className="grid grid-cols-4 gap-1">
-                                {ENTRY_HAZARDS.map(hazard => (
-                                    <div key={hazard} className="flex flex-col items-center">
-                                        <span className="text-xs">{field.hazards?.[side]?.[hazard.toLowerCase().replace(' ', '-')] || 0}</span>
-                                        <div className="flex">
-                                            <button onClick={() => hazardButton(side, hazard, -1)} className="bg-red-800 h-4 w-4 text-xs flex items-center justify-center rounded-l">-</button>
-                                            <button onClick={() => hazardButton(side, hazard, 1)} className="bg-green-800 h-4 w-4 text-xs flex items-center justify-center rounded-r">+</button>
+                                {ENTRY_HAZARDS.map(hazard => {
+                                    const hazardKey = hazard.toLowerCase().replace(' ', '-');
+                                    return (
+                                        <div key={hazardKey} className="flex flex-col items-center">
+                                            {/* Use sideInfo.id to get the correct count */}
+                                            <span className="text-xs">{field.hazards?.[sideInfo.id]?.[hazardKey] || 0}</span>
+                                            <div className="flex">
+                                                {/* Use sideInfo.id to call the handler with the correct ID */}
+                                                <button onClick={() => hazardButton(sideInfo.id, hazard, -1)} className="bg-red-800 h-4 w-4 text-xs flex items-center justify-center rounded-l">-</button>
+                                                <button onClick={() => hazardButton(sideInfo.id, hazard, 1)} className="bg-green-800 h-4 w-4 text-xs flex items-center justify-center rounded-r">+</button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     ))}
