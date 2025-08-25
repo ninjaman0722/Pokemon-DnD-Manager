@@ -29,9 +29,11 @@ const PokemonStatEditorModal = ({ pokemon, onSave, onClose }) => {
         setEditedPokemon(p => {
             const currentVolatiles = p.volatileStatuses || [];
             if (isChecked) {
+                // When adding a status via the editor, add the simple string version.
                 return { ...p, volatileStatuses: [...currentVolatiles, statusName] };
             } else {
-                return { ...p, volatileStatuses: currentVolatiles.filter(s => s !== statusName) };
+                // When removing, filter out both strings and objects with a matching name.
+                return { ...p, volatileStatuses: currentVolatiles.filter(s => (typeof s === 'string' ? s : s.name) !== statusName) };
             }
         });
     };
@@ -66,7 +68,7 @@ const PokemonStatEditorModal = ({ pokemon, onSave, onClose }) => {
                             <label key={vs} className="flex items-center gap-2 text-sm">
                                 <input
                                     type="checkbox"
-                                    checked={editedPokemon.volatileStatuses?.includes(vs) || false}
+                                    checked={editedPokemon.volatileStatuses?.some(s => (typeof s === 'string' ? s : s.name) === vs)}
                                     onChange={(e) => handleVolatileStatusChange(vs, e.target.checked)}
                                     className="form-checkbox h-4 w-4 bg-gray-700 border-gray-500 rounded"
                                 />

@@ -245,3 +245,13 @@ export const checkMoveBlockingAbilities = (action, actor, currentBattleState) =>
 
     return null; // The move is not blocked.
 };
+export const getAromaVeilProtector = (target, battleState) => {
+    const targetTeam = battleState.teams.find(t => t.pokemon.some(p => p.id === target.id));
+    if (!targetTeam) return null;
+
+    const activePokemonOnSide = targetTeam.pokemon.filter((p, i) => 
+        battleState.activePokemonIndices[targetTeam.id]?.includes(i) && p && !p.fainted
+    );
+
+    return activePokemonOnSide.find(p => getEffectiveAbility(p, battleState)?.id === 'aroma-veil') || null;
+};

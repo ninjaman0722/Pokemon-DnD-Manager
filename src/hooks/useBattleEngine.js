@@ -87,21 +87,22 @@ export const useBattleEngine = (
     };
 
     const handlePrepareTurn = async () => {
-        // --- MODIFIED: The function is now much simpler ---
+        // --- THIS IS THE CORRECTED FUNCTION ---
         
-        // 1. Calculate the initial state of the turn with no overrides
-        const { sortedActions, preCalculatedData } = calculateTurnPreview(battleState, queuedActions, {});
+        // 1. Calculate the preview and destructure the new, correct data shape.
+        const { previewActions, chanceEvents, turnOrder } = calculateTurnPreview(battleState, queuedActions, {});
 
-        // 2. Check if we can bypass the modal
-        if (preCalculatedData.moveActions.length === 0 && preCalculatedData.chanceEvents.length === 0) {
+        // 2. Check if we can bypass the modal using the new properties.
+        if (previewActions.length === 0 && chanceEvents.length === 0) {
             console.log("No choices to make. Bypassing resolution modal.");
             await handleConfirmAndExecuteTurn({});
             return;
         }
 
-        // 3. Set the initial data and open the modal
-        setTurnOrder(sortedActions);
-        setResolutionData(preCalculatedData);
+        // 3. Set the data for the modal.
+        //    The modal now receives an object containing both the previewed actions and the chance events.
+        setTurnOrder(turnOrder);
+        setResolutionData({ previewActions, chanceEvents });
         setIsResolutionModalOpen(true);
     };
 

@@ -1,4 +1,4 @@
-import { resolveChance, canSwitchOut, getEffectiveAbility, checkMoveBlockingAbilities } from '../battleUtils';
+import { resolveChance, canSwitchOut, getEffectiveAbility, checkMoveBlockingAbilities, getAromaVeilProtector } from '../battleUtils';
 import { calculateDamage } from '../damageCalculator';
 import { calculateStatChange } from '../stateModifiers';
 import {
@@ -9,7 +9,8 @@ import {
     INFATUATION_MOVE, ABILITY_SUPPRESSING_MOVES, ABILITY_REPLACEMENT_MOVES, TWO_TURN_MOVES,
     REFLECTABLE_MOVES, BINDING_MOVES, LEECH_SEED_MOVE, CONFUSION_INDUCING_MOVES, PROTECTIVE_MOVES,
     DELAYED_DAMAGE_MOVES, EXPLOSIVE_MOVES, HEALING_MOVES, DISABLE_INDUCING_MOVES, TORMENT_INDUCING_MOVES,
-    HEAL_BLOCK_INDUCING_MOVES, AQUA_RING_MOVE, INGRAIN_MOVE, SWITCHING_MOVES, PHASING_MOVES, ARMOR_TAIL_IGNORED_TARGETS
+    HEAL_BLOCK_INDUCING_MOVES, AQUA_RING_MOVE, INGRAIN_MOVE, SWITCHING_MOVES, PHASING_MOVES, ARMOR_TAIL_IGNORED_TARGETS,
+    NON_VOLATILE_STATUSES, VOLATILE_STATUSES
 } from '../../../config/gameData';
 import { abilityEffects } from '../abilityEffects';
 import { itemEffects } from '../itemEffects';
@@ -34,7 +35,10 @@ const checkMoveUsageRestrictions = (actor, move, battleState, newLog) => {
     }
 
     // 3. Check for Taunt (no change)
-    if (actor.volatileStatuses.includes('Taunt') && move.damage_class.name === 'status') { /* ... */ }
+    if (actor.volatileStatuses.includes('Taunt') && move.damage_class.name === 'status') {
+        newLog.push({ type: 'text', text: `${actor.name} can't use ${move.name} after being taunted!` });
+        return true; // Move fails
+    }
 
     // 4. Check for Torment (cannot use the same move twice in a row)
     if (actor.volatileStatuses.includes('Torment') && move.id === actor.lastMoveUsed) {
@@ -116,38 +120,53 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
     }
     if (DISABLE_INDUCING_MOVES.has(moveId)) {
         const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.targetIds[0]);
-        if (target && target.lastMoveUsed && !target.disabledMove) {
-            target.disabledMove = target.lastMoveUsed; // Store the ID of the move to be disabled
-            target.disableTurns = 4; // Set a counter for the duration
+        const protector = target ? getAromaVeilProtector(target, currentBattleState) : null;
+
+        if (protector) {
+            newLog.push({ type: 'text', text: `${target.name} is protected by ${protector.name}'s Aroma Veil!` });
+        }
+        else if (target && target.lastMoveUsed && !target.disabledMove) {
+            target.disabledMove = target.lastMoveUsed; 
+            target.disableTurns = 4;
             const disabledMoveName = target.moves.find(m => m.id === target.lastMoveUsed)?.name || 'the last move';
             newLog.push({ type: 'text', text: `${target.name}'s ${disabledMoveName} was disabled!` });
         } else {
             newLog.push({ type: 'text', text: 'But it failed!' });
         }
-        return; // End the action
+        return;
     }
 
     if (TORMENT_INDUCING_MOVES.has(moveId)) {
         const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.targetIds[0]);
-        if (target && !target.volatileStatuses.includes('Torment')) {
+        const protector = target ? getAromaVeilProtector(target, currentBattleState) : null;
+
+        if (protector) {
+            newLog.push({ type: 'text', text: `${target.name} is protected by ${protector.name}'s Aroma Veil!` });
+        }
+        else if (target && !target.volatileStatuses.includes('Torment')) {
             target.volatileStatuses.push('Torment');
             newLog.push({ type: 'text', text: `${target.name} was subjected to torment!` });
         } else {
             newLog.push({ type: 'text', text: 'But it failed!' });
         }
-        return; // End the action
+        return;
     }
 
     if (HEAL_BLOCK_INDUCING_MOVES.has(moveId)) {
         const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.targetIds[0]);
-        if (target && !target.volatileStatuses.includes('Heal Block')) {
+        const protector = target ? getAromaVeilProtector(target, currentBattleState) : null;
+
+        if (protector) {
+            newLog.push({ type: 'text', text: `${target.name} is protected by ${protector.name}'s Aroma Veil!` });
+        }
+        else if (target && !target.volatileStatuses.includes('Heal Block')) {
             target.volatileStatuses.push('Heal Block');
             target.healBlockTurns = 5;
             newLog.push({ type: 'text', text: `${target.name} was prevented from healing!` });
         } else {
             newLog.push({ type: 'text', text: 'But it failed!' });
         }
-        return; // End the action
+        return;
     }
     const actorTeam = currentBattleState.teams.find(t => t.pokemon.some(p => p.id === actor.id));
     const itemId = actor.heldItem?.id;
@@ -300,41 +319,56 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
     }
     if (moveId === ENCORE_MOVE) {
         const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.targetIds[0]);
-        if (target && target.lastMoveUsed && !target.volatileStatuses.some(s => (s.name || s) === 'Encore')) {
+        const protector = target ? getAromaVeilProtector(target, currentBattleState) : null;
+
+        if (protector) {
+            newLog.push({ type: 'text', text: `${target.name} is protected by ${protector.name}'s Aroma Veil!` });
+        } 
+        else if (target && target.lastMoveUsed && !target.volatileStatuses.some(s => (s.name || s) === 'Encore')) {
             target.volatileStatuses.push('Encore');
             target.encoredMove = target.lastMoveUsed;
             target.encoreTurns = 3;
             newLog.push({ type: 'text', text: `${target.name} received an encore!` });
-        } else { newLog.push({ type: 'text', text: 'But it failed!' }); }
+        } else { 
+            newLog.push({ type: 'text', text: 'But it failed!' }); 
+        }
         return;
     }
     if (moveId === TAUNT_MOVE) {
         const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.targetIds[0]);
-        if (target && !target.volatileStatuses.some(s => (s.name || s) === 'Taunt')) {
+        const protector = target ? getAromaVeilProtector(target, currentBattleState) : null;
+
+        if (protector) {
+            newLog.push({ type: 'text', text: `${target.name} is protected by ${protector.name}'s Aroma Veil!` });
+        }
+        else if (target && !target.volatileStatuses.some(s => (s.name || s) === 'Taunt')) {
             target.volatileStatuses.push('Taunt');
             target.tauntTurns = 3;
             newLog.push({ type: 'text', text: `${target.name} was taunted!` });
-        } else { newLog.push({ type: 'text', text: 'But it failed!' }); }
+        } else {
+            newLog.push({ type: 'text', text: 'But it failed!' });
+        }
         return;
     }
     if (moveId === INFATUATION_MOVE) {
         const target = currentBattleState.teams.flatMap(t => t.pokemon).find(p => p.id === action.targetIds[0]);
-        if (target && actor.gender !== 'Genderless' && target.gender !== 'Genderless' && actor.gender !== target.gender && !target.volatileStatuses.some(s => (s.name || s) === 'Infatuated')) {
+        const protector = target ? getAromaVeilProtector(target, currentBattleState) : null;
+
+        if (protector) {
+            newLog.push({ type: 'text', text: `${target.name} is protected by ${protector.name}'s Aroma Veil!` });
+        }
+        else if (target && actor.gender !== 'Genderless' && target.gender !== 'Genderless' && actor.gender !== target.gender && !target.volatileStatuses.some(s => (s.name || s) === 'Infatuated')) {
             target.volatileStatuses.push('Infatuated');
             target.infatuatedWith = actor.id;
             newLog.push({ type: 'text', text: `${target.name} fell in love with ${actor.name}!` });
 
-            // --- NEW DESTINY KNOT LOGIC ---
             if (target.heldItem?.id === 'destiny-knot') {
-                // Check if the original attacker can also be infatuated
                 if (!actor.volatileStatuses.some(s => (s.name || s) === 'Infatuated')) {
                     actor.volatileStatuses.push('Infatuated');
-                    actor.infatuatedWith = target.id; // Infatuated with the Destiny Knot holder
+                    actor.infatuatedWith = target.id;
                     newLog.push({ type: 'text', text: `${actor.name} fell in love with ${target.name} due to the Destiny Knot!` });
                 }
             }
-            // --- END NEW LOGIC ---
-
         } else {
             newLog.push({ type: 'text', text: 'But it failed!' });
         }
@@ -624,48 +658,30 @@ export const handleFightAction = (action, currentBattleState, allTrainers, redir
                 });
 
                 // Handle PRIMARY effects of status moves immediately after a hit is confirmed.
-                if (move.damage_class.name === 'status' && move.meta?.category?.name === 'ailment') {
-                    // --- ADD ANOTHER LOG HERE ---
-                    console.log(`[Execution] Status move detected. Applying effect.`);
-
-                    if (finalTarget.status === 'None') {
-                        const statusToApply = API_AILMENT_TO_STATUS_MAP[move.meta.ailment.name];
-                        if (statusToApply) {
-                            const isImmune =
-                                (statusToApply === 'Paralyzed' && finalTarget.types.includes('electric')) ||
-                                (statusToApply === 'Burned' && finalTarget.types.includes('fire')) ||
-                                (statusToApply === 'Frozen' && finalTarget.types.includes('ice')) ||
-                                ((statusToApply === 'Poisoned' || statusToApply === 'Badly Poisoned') && (finalTarget.types.includes('poison') || finalTarget.types.includes('steel')));
-
-                            if (!isImmune) {
-                                finalTarget.status = statusToApply;
-                                newLog.push({ type: 'text', text: `${finalTarget.name} was afflicted with ${statusToApply.toLowerCase()}!` });
-                            } else {
-                                newLog.push({ type: 'text', text: `It doesn't affect ${finalTarget.name}...` });
-                            }
-                        }
-                    }
-                }
-
-                // This is the existing logic for SECONDARY effects of damaging moves
                 const ailment = move.meta?.ailment?.name;
                 const effectKey = `willApplyEffect_${move.id}_on_${finalTarget.id}`;
+
+                // This logic handles both primary and volatile statuses from a move's secondary effect.
                 if (ailment && ailment !== 'none' && !damageResult.move.sheerForceBoosted && currentBattleState.dm?.[effectKey]) {
-                    if (finalTarget.status === 'None') {
-                        const statusToApply = API_AILMENT_TO_STATUS_MAP[ailment];
-                        if (statusToApply) {
+                    const statusToApply = API_AILMENT_TO_STATUS_MAP[ailment];
+
+                    if (statusToApply) {
+                        // Check if it's a primary status
+                        if (NON_VOLATILE_STATUSES.includes(statusToApply) && finalTarget.status === 'None') {
                             const isImmune =
                                 (statusToApply === 'Paralyzed' && finalTarget.types.includes('electric')) ||
                                 (statusToApply === 'Burned' && finalTarget.types.includes('fire')) ||
                                 (statusToApply === 'Frozen' && finalTarget.types.includes('ice')) ||
                                 ((statusToApply === 'Poisoned' || statusToApply === 'Badly Poisoned') && (finalTarget.types.includes('poison') || finalTarget.types.includes('steel')));
-
                             if (!isImmune) {
                                 finalTarget.status = statusToApply;
                                 newLog.push({ type: 'text', text: `${finalTarget.name} was afflicted with ${statusToApply.toLowerCase()}!` });
-                            } else {
-                                newLog.push({ type: 'text', text: `It doesn't affect ${finalTarget.name}...` });
                             }
+                        }
+                        // Check if it's a volatile status
+                        else if (VOLATILE_STATUSES.includes(statusToApply) && !finalTarget.volatileStatuses.some(s => (s.name || s) === statusToApply)) {
+                            finalTarget.volatileStatuses.push(statusToApply);
+                            newLog.push({ type: 'text', text: `${finalTarget.name} became ${statusToApply.toLowerCase()}!` });
                         }
                     }
                 }

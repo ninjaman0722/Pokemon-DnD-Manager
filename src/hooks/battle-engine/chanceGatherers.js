@@ -3,7 +3,7 @@ import { CONTACT_MOVES } from '../../config/gameData';
 import { getEffectiveAbility, getActiveAllies } from './battleUtils';
 import { itemEffects } from './itemEffects';
 
-export const getEffectChances = (attacker, target, move, chanceQueue) => {
+export const getEffectChances = (attacker, target, move, chanceQueue, dependencyKey) => {
     const ailment = move.meta?.ailment;
     const ailmentChance = move.meta?.ailment_chance;
 
@@ -20,12 +20,13 @@ export const getEffectChances = (attacker, target, move, chanceQueue) => {
             isGuaranteed: isGuaranteed,
             sourceMoveName: move.name,
             targetName: target.name,
-            effectName: ailment.name
+            effectName: ailment.name,
+            dependsOn: dependencyKey
         });
     }
 };
 
-export const getContactAbilities = (attacker, target, move, chanceQueue) => {
+export const getContactAbilities = (attacker, target, move, chanceQueue, dependencyKey) => {
     if (!CONTACT_MOVES.has(move.id)) return; // Only proceed for contact moves
 
     const targetAbilityId = getEffectiveAbility(target)?.id;
@@ -46,6 +47,7 @@ export const getContactAbilities = (attacker, target, move, chanceQueue) => {
             chance: chance,
             type: 'Ability Trigger',
             sourceId: target.id,
+            dependsOn: dependencyKey
         });
     }
 };

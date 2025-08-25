@@ -1149,6 +1149,7 @@ export const abilityEffects = {
         }
     },
     'arena-trap': {},
+    'aroma-veil': {},
     'unaware': {},
     'simple': {},
     'wonder-guard': {},

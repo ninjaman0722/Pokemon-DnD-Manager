@@ -14,12 +14,14 @@ export const runPreMoveChecks = (actor, battleState, chanceQueue) => {
 
     // 2. Check for Confusion
     if (actor.volatileStatuses.some(s => (s.name || s) === 'Confused')) {
+        const confusionGroup = `confusion_${actor.id}`;
         chanceQueue.push({
             key: `willSnapOutOfConfusion_${actor.id}`,
             label: `Will ${actor.name} snap out of confusion?`,
             chance: 33.3,
             type: 'Status Check',
             sourceId: actor.id,
+            mutuallyExclusiveGroup: confusionGroup
         });
         chanceQueue.push({
             key: `willHurtSelfInConfusion_${actor.id}`,
@@ -27,6 +29,7 @@ export const runPreMoveChecks = (actor, battleState, chanceQueue) => {
             chance: 33.3,
             type: 'Status Check',
             sourceId: actor.id,
+            mutuallyExclusiveGroup: confusionGroup
         });
     }
 
